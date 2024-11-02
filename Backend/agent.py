@@ -40,7 +40,7 @@ class Player_agent_DQN:
         self.target_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
         self.sync()
 
-        
+
         self.rng = np.random.default_rng()
         self.buffer = Replay_buffer(buffer_size)
         self.optimizer = t.optim.Adam(params=self.value_network.parameters, lr=lr, maximize=True)
@@ -51,18 +51,20 @@ class Player_agent_DQN:
 
 
     def greedy_policy(self, observation):
-        if not np.all(observation.shape == self.board_size):
-            raise ValueError(f"Observation dimensions {observation.shape} do not correspont to board size {self.board_size}.")
+        board = observation["board"]
+        if not np.all(board.shape == self.board_size):
+            raise ValueError(f"Observed board dimensions {board.shape} do not correspont to board size {self.board_size}.")
         
         with t.no_grad():
-            state = t.tensor(observation, dtype=t.float32)
+            state = t.tensor(board, dtype=t.float32)
             values = self.value_network(state)
             max_action = t.unravel_index(t.argmax(values), values.shape)
             return max_action
     
     def epsilon_greedy_policy(self, observation):
+        board = observation["board"]
         if not np.all(observation.shape == self.board_size):
-            raise ValueError(f"Observation dimensions {observation.shape} do not correspont to board size {self.board_size}.")
+            raise ValueError(f"Observation dimensions {board.shape} do not correspont to board size {self.board_size}.")
         
         if self.rng.random() < self.epsilon:
             indices = self.rng.integers(0, self.board_size, 2)
