@@ -29,9 +29,11 @@ class Game:
         self.flat_gaussian = np.exp(np.indices((size, size), dtype=np.float32))
 
     def play(self, coords:Sequence[int]) -> Dict:
-        i,j = coords[0], coords[1]
-        if not self.is_move_valid(i,j):
-            raise IndexError(f"Tried to play at invalid field ({i}, {j}).")
+        i,j = coords
+        # Not needed while checks are done in interact fnc for training
+        # if not self.is_move_valid(i,j):
+        #     raise IndexError(f"Tried to play at invalid field ({i}, {j}).")
+        
         self.board[i,j] = self.next_turn
         self.next_turn *= -1
         self.turn += 1
@@ -42,7 +44,8 @@ class Game:
         valid_moves = np.stack(np.where(self.board == 0)).T
         return valid_moves
         
-    def is_move_valid(self, i:int, j:int) -> bool:
+    def is_move_valid(self, coords) -> bool:
+        i,j = coords
         return i >= 0 and j >= 0 and i < self.size and j < self.size and self.board[i,j] == 0
 
     def evaluate(self) -> None:
@@ -89,7 +92,7 @@ class Game:
     
         # print(win_antidiagonal, win_diagonal, win_vertical, win_horizontal)
     
-    def reset(self) -> None:
+    def reset(self) -> Dict:
         self.board = np.zeros(self.size, self.size)
         self.turn = 0
         self.next_turn = self.first_player
@@ -118,7 +121,7 @@ class Game:
         result = self.play(random_central_move)
         return result
 
-    def get_observation(self):
+    def get_observation(self) -> Dict:
         return {"board": self.board, "terminated": self.terminated, "endstate": self.endstate}
 
 
