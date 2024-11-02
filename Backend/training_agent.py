@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import einops
 import random
 import torch as t
+import numpy as np
 
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "terminated"))
 Reward_values = namedtuple("Reward_values", ("valid", "invalid", "win", "loss", "draw"))
@@ -192,5 +193,63 @@ class Training_agent:
         plt.ylim(0, 1.1*max(smoothed_losses))
         plt.show()
 
-    def evaluate(self, interaction_steps):
-        pass
+    def evaluate(self, episodes=50, turn_limit=50):
+        """
+        Record rewards from several agent games and return their mean and variance.
+        """
+        
+        rewards = []
+        # Reset environment and ensure it's agent's turn
+
+        for _ in range(episodes):    
+            obs = self.game.reset()
+            episode_reward = 0
+
+            if self.agent.side != self.game.next_player:
+                obs = self.opponent_move()
+
+            for i in range(turn_limit):
+
+                move = self.agent.epsilon_greedy_policy(obs)
+
+                # If move is not valid, do not advance the game and just record the transition with a punishment for invalid move
+                if not self.game.is_move_valid(move):
+                    episode_reward += self.reward_values.invalid
+                    continue
+                
+                # Else play the move, if the game has not terminated let opponent play, then get a reward according to game end state
+                next_obs = self.game.play(move)
+                if not next_obs.terminated:
+                    next_obs = self.opponent_move()
+                
+                match next_obs.endstate:
+
+                    case Endstate.NONE:
+                        reward = self.reward_values.valid
+
+                    case Endstate.WON_1:
+                        if self.agent.side == 1:
+                            reward = self.reward_values.win
+                        else:
+                            reward = self.reward_values.loss
+
+                    case Endstate.LOST_1:
+                        if self.agent.side == 1:
+                            reward = self.reward_values.loss
+                        else:
+                            reward = self.reward_values.win
+
+                    case Endstate.DRAW:
+                        reward = self.reward_values.draw
+
+                # Save transition and update observation
+                episode_reward += reward
+                obs = next_obs
+                if obs.terminated:
+                    break
+
+            rewards.append(episode_reward)
+
+        mean = np.mean(rewards)
+        std = np.std(rewards)
+        return mean, std
