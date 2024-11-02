@@ -3,6 +3,9 @@ import torch as t
 import torch.nn as nn
 
 class Q_net(nn.Module):
+    """
+    A convolutional network that takes a game board and returns the probabilities for the best next move.
+    """
     def __init__(self, board_size, channels = [1,4,8,16,1], kernel_sizes = [5, 5, 4, 3]):
 
         self.network = nn.Sequential(
