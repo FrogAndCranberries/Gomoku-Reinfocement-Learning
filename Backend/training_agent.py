@@ -2,6 +2,7 @@ from game import Game, Endstate, Observation
 from agent import Player_agent_DQN
 from collections import namedtuple
 from collections import deque
+import matplotlib.pyplot as plt
 import einops
 import random
 import torch as t
@@ -28,7 +29,7 @@ class Replay_buffer:
 
 class Training_agent:
     def __init__(self, player_agent:Player_agent_DQN, size:int, connect:int, 
-                 opponent_type = "random", reward_values = Reward_values(1,-10,1000,-1000,10),
+                 opponent_type = "random", reward_values = Reward_values(1, -10, 1_000, -1_000, 10),
                  buffer_size = 200_000, batch_size = 32, gamma = 0.95) -> None:
         
         # Check opponent type is valid.
@@ -138,6 +139,22 @@ class Training_agent:
         self.agent.optimizer.step()
 
         return loss.item()
+    
+
+    def training_loop(self, interaction_steps:int = 1_000, loops:int = 50_000, sync_period:int = 1_000) -> list[int]:
+        losses = []
+        self.interact(interaction_steps)
+
+        for i in range(loops):
+
+            loss = self.update_weights()
+            losses.append(loss)
+            self.interact(interaction_steps)
+
+            if i % sync_period == 0:
+                self.agent.sync()
+
+        return losses
 
     def opponent_move(self) -> Observation:
         """
@@ -158,6 +175,7 @@ class Training_agent:
             case _:
                 raise NotImplementedError(f"Opponent type {self.opponent_type} not implemented.")
 
-    def training_loop(self):
-        pass
+    def plot_losses(self, losses):
+        plt.plot(range(len(losses)), losses)
+        plt.show()
 
