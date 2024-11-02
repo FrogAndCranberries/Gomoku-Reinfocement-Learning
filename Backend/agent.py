@@ -51,21 +51,17 @@ class Player_agent_DQN:
 
 
     def greedy_policy(self, observation):
-        board = observation.board
-        if not np.all(board.shape == self.board_size):
-            raise ValueError(f"Observed board dimensions {board.shape} do not correspont to board size {self.board_size}.")
+        board_standardized = observation.board * self.side
+        if not np.all(board_standardized.shape == self.board_size):
+            raise ValueError(f"Observed board dimensions {board_standardized.shape} do not correspont to board size {self.board_size}.")
         
         with t.no_grad():
-            state = t.tensor(board, dtype=t.float32)
+            state = t.tensor(board_standardized, dtype=t.float32)
             values = self.value_network(state)
             max_action = t.unravel_index(t.argmax(values), values.shape)
             return max_action
     
     def epsilon_greedy_policy(self, observation):
-        board = observation.board
-        if not np.all(board.shape == self.board_size):
-            raise ValueError(f"Observation dimensions {board.shape} do not correspont to board size {self.board_size}.")
-        
         if self.rng.random() < self.epsilon:
             indices = self.rng.integers(0, self.board_size, 2)
             return indices
