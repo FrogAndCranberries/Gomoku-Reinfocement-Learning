@@ -35,12 +35,19 @@ class Player_agent_DQN:
         self.gamma = gamma
         self.batch_size = batch_size
 
-        self.rng = np.random.default_rng()
+
         self.value_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
-        self.target = Q_net(channels=channels, kernel_sizes=kernel_sizes)
+        self.target_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
+        self.sync()
+
+        
+        self.rng = np.random.default_rng()
         self.buffer = Replay_buffer(buffer_size)
         self.optimizer = t.optim.Adam(params=self.value_network.parameters, lr=lr, maximize=True)
 
+    
+    def sync(self):
+        self.target_network.load_state_dict(self.value_network.state_dict())
 
 
     def greedy_policy(self, observation):
