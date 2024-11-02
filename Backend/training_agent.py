@@ -54,7 +54,7 @@ class Training_agent:
         # Reset environment and ensure it's agent's turn
         obs = self.game.reset()
 
-        if self.agent.side != self.game.next_turn:
+        if self.agent.side != self.game.next_player:
             obs = self.opponent_move()
 
         for _ in range(steps):
