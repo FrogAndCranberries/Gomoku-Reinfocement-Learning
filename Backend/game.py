@@ -1,6 +1,8 @@
 import numpy as np
 from enum import Enum
 from scipy.signal import convolve2d
+from typing import Dict, Sequence
+
 
 # Gomoku game instance with taking turns and evaluating win conditions
 
@@ -12,21 +14,25 @@ class Endstate(Enum):
 
 
 class Game:
-    def __init__(self, size:int, connect:int):
+    def __init__(self, size:int, connect:int, first_player:int = 1, seed = None):
         if connect > size:
             raise ValueError(f"Can't play connect-{connect} on board with size {size}")
         self.size = size
         self.connect = connect
         self.board = np.zeros((size, size))
         self.turn = 0
-        self.next_turn = 1
+        self.first_player = first_player
+        self.next_turn = first_player
         self.terminated = False
         self.endstate = Endstate.NONE
+        self.rng = np.random.default_rng(seed)
+        self.flat_gaussian = np.exp(np.indices((size, size), dtype=np.float32))
 
-    def play(self, x:int, y:int):
-        if not self.is_move_valid(x,y):
-            raise IndexError(f"Tried to play at invalid field ({x}, {y}).")
-        self.board[x,y] = self.next_turn
+    def play(self, coords:Sequence[int]) -> Dict:
+        i,j = coords[0], coords[1]
+        if not self.is_move_valid(i,j):
+            raise IndexError(f"Tried to play at invalid field ({i}, {j}).")
+        self.board[i,j] = self.next_turn
         self.next_turn *= -1
         self.turn += 1
         self.evaluate()
@@ -34,10 +40,10 @@ class Game:
     
     def get_valid_moves(self) -> np.ndarray:
         valid_moves = np.stack(np.where(self.board == 0)).T
-        return(valid_moves)
+        return valid_moves
         
-    def is_move_valid(self, x:int, y:int) -> bool:
-        return x >= 0 and y >= 0 and x < self.size and y < self.size and self.board[x,y] == 0
+    def is_move_valid(self, i:int, j:int) -> bool:
+        return i >= 0 and j >= 0 and i < self.size and j < self.size and self.board[i,j] == 0
 
     def evaluate(self) -> None:
         horizontal = np.ones((1,self.connect))
@@ -83,10 +89,43 @@ class Game:
     
         # print(win_antidiagonal, win_diagonal, win_vertical, win_horizontal)
     
+    def reset(self) -> None:
+        self.board = np.zeros(self.size, self.size)
+        self.turn = 0
+        self.next_turn = self.first_player
+        self.terminated = False
+        self.endstate = Endstate.NONE
+        return {"board": self.board, "terminated": self.terminated, "endstate": self.endstate}
+
+    def random_move(self) -> Dict:
+        valid_moves = self.get_valid_moves()
+        random_move = self.rng.choice(valid_moves, size=1, axis = 0)
+        result = self.play(random_move)
+        return result
+
+    def most_central_move(self) -> Dict:
+        valid_moves = self.get_valid_moves()
+        moves_by_center_distance = np.abs(valid_moves - self.size // 2)
+        central_move = np.argmin(moves_by_center_distance)
+        result = self.play(valid_moves[central_move])
+        return result
+    
+    def random_central_move(self) -> Dict:
+        valid_moves = self.get_valid_moves()
+        weights = (valid_moves.shape[0] - np.arange(valid_moves.shape[0])) ** 2
+        distribution = weights / weights.sum
+        random_central_move = self.rng.choice(valid_moves, size=1, axis = 0, p=distribution)
+        result = self.play(random_central_move)
+        return result
+
+    def get_observation(self):
+        return {"board": self.board, "terminated": self.terminated, "endstate": self.endstate}
+
 
 if __name__ == "__main__":
     game = Game(3, 2)
     print(game.board)
-    # game.board[1,1:3] = np.ones(2)
+    game.board[0:2,0:3] = np.ones(3)
     # game.board[2:7,4] = np.ones((5)) * -1
     game.get_valid_moves()
+    game.random_move()
