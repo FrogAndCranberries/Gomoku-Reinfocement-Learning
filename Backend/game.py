@@ -30,7 +30,7 @@ class Game:
         self.rng = np.random.default_rng(seed)
         self.flat_gaussian = np.exp(np.indices((size, size), dtype=np.float32))
 
-    def play(self, coords:Sequence[int]) -> Dict:
+    def play(self, coords:Sequence[int]) -> Observation:
         i,j = coords
         # Not needed while checks are done in interact fnc for training
         # if not self.is_move_valid(i,j):
@@ -94,7 +94,7 @@ class Game:
     
         # print(win_antidiagonal, win_diagonal, win_vertical, win_horizontal)
     
-    def reset(self) -> Dict:
+    def reset(self) -> Observation:
         self.board = np.zeros(self.size, self.size)
         self.turn = 0
         self.next_turn = self.first_player
@@ -102,20 +102,20 @@ class Game:
         self.endstate = Endstate.NONE
         return Observation(self.board, self.terminated, self.endstate)
 
-    def random_move(self) -> Dict:
+    def random_move(self) -> Observation:
         valid_moves = self.get_valid_moves()
         random_move = self.rng.choice(valid_moves, size=1, axis = 0)
         result = self.play(random_move)
         return result
 
-    def most_central_move(self) -> Dict:
+    def most_central_move(self) -> Observation:
         valid_moves = self.get_valid_moves()
         moves_by_center_distance = np.abs(valid_moves - self.size // 2)
         central_move = np.argmin(moves_by_center_distance)
         result = self.play(valid_moves[central_move])
         return result
     
-    def random_central_move(self) -> Dict:
+    def random_central_move(self) -> Observation:
         valid_moves = self.get_valid_moves()
         weights = (valid_moves.shape[0] - np.arange(valid_moves.shape[0])) ** 2
         distribution = weights / weights.sum
@@ -123,7 +123,7 @@ class Game:
         result = self.play(random_central_move)
         return result
 
-    def get_observation(self) -> Dict:
+    def get_observation(self) -> Observation:
         return Observation(self.board, self.terminated, self.endstate)
 
 
