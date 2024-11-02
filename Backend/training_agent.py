@@ -11,16 +11,16 @@ Transition = namedtuple("Transition", ("state", "action", "reward", "next_state"
 Reward_values = namedtuple("Reward_values", ("valid", "invalid", "win", "loss", "draw"))
 
 class Replay_buffer:
-    def __init__(self, size):
+    def __init__(self, size) -> None:
         self.buffer = deque(maxlen=size)
 
-    def push(self, state, action, reward, next_state, terminated):
+    def push(self, state, action, reward, next_state, terminated) -> None:
         """
         Append a transition to the buffer.
         """
         self.buffer.append(Transition(state, action, reward, next_state, terminated))
 
-    def sample(self, size):
+    def sample(self, size:int) -> list[Transition]:
         """
         Sample N transitions from the buffer.
         """
@@ -29,8 +29,8 @@ class Replay_buffer:
 
 class Training_agent:
     def __init__(self, player_agent:Player_agent_DQN, size:int, connect:int, 
-                 opponent_type = "random", reward_values = Reward_values(1, -10, 1_000, -1_000, 10),
-                 buffer_size = 200_000, batch_size = 32, gamma = 0.95) -> None:
+                 opponent_type:str = "random", reward_values:Reward_values = Reward_values(1, -10, 1_000, -1_000, 10),
+                 buffer_size:int = 200_000, batch_size:int = 32, gamma:float = 0.95) -> None:
         
         # Check opponent type is valid.
         allowed_opponent_types = ("random", "central", "random_central")
@@ -142,19 +142,23 @@ class Training_agent:
     
 
     def training_loop(self, interaction_steps:int = 1_000, loops:int = 50_000, sync_period:int = 1_000) -> list[int]:
-        losses = []
+        """
+        The player agent interacts with the environment and updates its network weights in a training loop, 
+        periodically syncing value and target network weights.
+        """
+        self.losses = []
         self.interact(interaction_steps)
 
         for i in range(loops):
 
             loss = self.update_weights()
-            losses.append(loss)
+            self.losses.append(loss)
             self.interact(interaction_steps)
 
             if i % sync_period == 0:
                 self.agent.sync()
 
-        return losses
+        return self.losses
 
     def opponent_move(self) -> Observation:
         """
@@ -175,7 +179,18 @@ class Training_agent:
             case _:
                 raise NotImplementedError(f"Opponent type {self.opponent_type} not implemented.")
 
-    def plot_losses(self, losses):
-        plt.plot(range(len(losses)), losses)
+    def plot_losses(self):
+        """
+        Plots the losses accumulated in the training loop.
+        """
+        # Smooth out the losses
+        smoothed_losses = t.nn.functional.conv1d(self.losses, t.ones(len(self.losses) // 50) / (len(self.losses) // 50), padding='valid')
+        plt.plot(smoothed_losses)
+        plt.xlabel('Update step')
+        plt.ylabel('Loss')
+        plt.xlim(0, len(smoothed_losses))
+        plt.ylim(0, 1.1*max(smoothed_losses))
         plt.show()
 
+    def evaluate(self, interaction_steps):
+        pass
