@@ -2,6 +2,7 @@ import numpy as np
 from enum import Enum
 from scipy.signal import convolve2d
 from typing import Dict, Sequence
+from collections import namedtuple
 
 
 # Gomoku game instance with taking turns and evaluating win conditions
@@ -12,6 +13,7 @@ class Endstate(Enum):
     LOST_1 = 2
     DRAW = 3
 
+Observation = namedtuple("Observation", ("board", "terminated", "endstate"))
 
 class Game:
     def __init__(self, size:int, connect:int, first_player:int = 1, seed = None):
@@ -38,7 +40,7 @@ class Game:
         self.next_turn *= -1
         self.turn += 1
         self.evaluate()
-        return {"board": self.board, "terminated": self.terminated, "endstate": self.endstate}
+        return Observation(self.board, self.terminated, self.endstate)
     
     def get_valid_moves(self) -> np.ndarray:
         valid_moves = np.stack(np.where(self.board == 0)).T
@@ -98,7 +100,7 @@ class Game:
         self.next_turn = self.first_player
         self.terminated = False
         self.endstate = Endstate.NONE
-        return {"board": self.board, "terminated": self.terminated, "endstate": self.endstate}
+        return Observation(self.board, self.terminated, self.endstate)
 
     def random_move(self) -> Dict:
         valid_moves = self.get_valid_moves()
@@ -122,7 +124,7 @@ class Game:
         return result
 
     def get_observation(self) -> Dict:
-        return {"board": self.board, "terminated": self.terminated, "endstate": self.endstate}
+        return Observation(self.board, self.terminated, self.endstate)
 
 
 if __name__ == "__main__":

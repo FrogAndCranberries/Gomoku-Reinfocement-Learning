@@ -51,7 +51,7 @@ class Player_agent_DQN:
 
 
     def greedy_policy(self, observation):
-        board = observation["board"]
+        board = observation.board
         if not np.all(board.shape == self.board_size):
             raise ValueError(f"Observed board dimensions {board.shape} do not correspont to board size {self.board_size}.")
         
@@ -62,8 +62,8 @@ class Player_agent_DQN:
             return max_action
     
     def epsilon_greedy_policy(self, observation):
-        board = observation["board"]
-        if not np.all(observation.shape == self.board_size):
+        board = observation.board
+        if not np.all(board.shape == self.board_size):
             raise ValueError(f"Observation dimensions {board.shape} do not correspont to board size {self.board_size}.")
         
         if self.rng.random() < self.epsilon:
