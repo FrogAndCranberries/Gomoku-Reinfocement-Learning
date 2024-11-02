@@ -1,12 +1,27 @@
 from game import Game, Endstate, Observation
 from agent import Player_agent_DQN
 from collections import namedtuple
+from collections import deque
+import random
 
+Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "terminated"))
 Reward_values = namedtuple("Reward_values", ("valid", "invalid", "win", "loss", "draw"))
+
+class Replay_buffer:
+    def __init__(self, size):
+        self.buffer = deque(maxlen=size)
+
+    def push(self, state, action, reward, next_state, terminated):
+        self.buffer.append(Transition(state, action, reward, next_state, terminated))
+
+    def sample(self, size):
+        return random.sample(self.buffer, size)
+    
 
 class Training_agent:
     def __init__(self, player_agent:Player_agent_DQN, size:int, connect:int, 
-                 opponent_type="random", reward_values = Reward_values(1,-10,1000,-1000,10)) -> None:
+                 opponent_type = "random", reward_values = Reward_values(1,-10,1000,-1000,10),
+                 buffer_size = 200_000, batch_size = 32) -> None:
         self.game = Game(size, connect)
         self.agent = player_agent
         allowed_opponent_types = ("random", "central", "random_central")
@@ -14,6 +29,8 @@ class Training_agent:
             raise ValueError(f"Opponent type '{opponent_type}' not in {allowed_opponent_types}.")
         self.opponent_type = opponent_type
         self.reward_values = reward_values
+        self.batch_size = batch_size
+        self.buffer = Replay_buffer(buffer_size)
 
     def interact(self, steps:int) -> None:
         obs = self.game.reset()
@@ -30,7 +47,7 @@ class Training_agent:
 
             if not self.game.is_move_valid(move):
                 reward = self.reward_values.invalid
-                self.agent.buffer.push(obs.board, move, reward, obs.board, terminated=obs.terminated)
+                self.buffer.push(obs.board, move, reward, obs.board, terminated=obs.terminated)
                 continue
 
             next_obs = self.game.play(move)
@@ -57,11 +74,12 @@ class Training_agent:
                 case Endstate.DRAW:
                     reward = self.reward_values.draw
 
-            self.agent.buffer.push(obs.board, move, reward, next_obs.board, next_obs.terminated)
+            self.buffer.push(obs.board, move, reward, next_obs.board, next_obs.terminated)
 
             obs = next_obs
-                
     
+    def update_weights(self) -> None:
+        batch = self.agent.buffer.sample(self.batch_size)
 
     def opponent_move(self) -> Observation:
         match self.opponent_type:
