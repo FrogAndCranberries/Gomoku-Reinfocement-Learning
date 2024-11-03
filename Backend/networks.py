@@ -19,4 +19,4 @@ class Q_net(nn.Module):
         super.init()
 
     def forward(self, input):
-        return self.network.forward(input=input)
+        return self.network.forward(input)
