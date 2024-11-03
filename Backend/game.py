@@ -142,8 +142,9 @@ class Game:
         """
         valid_moves = self.get_valid_moves()
         moves_by_center_distance = np.sum(np.abs(valid_moves - self.size // 2), axis=1)
-        central_move = np.argmin(moves_by_center_distance).flatten()
-        result = self.play(valid_moves[central_move, :])
+        central_move_index = np.argmin(moves_by_center_distance)
+        central_move = valid_moves[central_move_index, :].flatten()
+        result = self.play(central_move)
         return result
     
     def random_central_move(self) -> Observation:
@@ -159,7 +160,7 @@ class Game:
 
         # Get decaying probability distribution
         weights = (valid_moves.shape[0] - np.arange(valid_moves.shape[0])) ** 2
-        distribution = weights / weights.sum
+        distribution = weights / weights.sum()
 
         # Sample a move
         random_central_move = self.rng.choice(ordered_valid_moves, size=1, axis = 0, p=distribution).flatten()
@@ -182,16 +183,18 @@ class Game:
         char_board[self.board == -1] = 'O'
         string_board = '\n'.join([' '.join(line) for line in char_board.tolist()])
         print(string_board)
+        print('\n')
 
 
 
 if __name__ == "__main__":
 
     # Testing
-    game = Game(3, 2)
-    print(game.board)
-    #game.board[0:2,0:3] = np.ones(3)
+    game = Game(5, 3)
+    # print(game.board)
+    # game.board[0:2,0:3] = np.ones(3)
     # game.board[2:7,4] = np.ones((5)) * -1
-    game.get_valid_moves()
-    game.random_move()
-    game.print_board()
+    for i in range(20):
+        obs = game.random_central_move()
+        game.print_board()
+        if obs.terminated: break
