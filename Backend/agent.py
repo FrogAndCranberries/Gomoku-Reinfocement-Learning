@@ -64,4 +64,9 @@ class Player_agent_DQN:
             indices = self.greedy_policy(observation)
             return indices
 
+    def side_as_char(self):
+        if self.side == 1:
+            return "X"
+        else:
+            return "O"
 

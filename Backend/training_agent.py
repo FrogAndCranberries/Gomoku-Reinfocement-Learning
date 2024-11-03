@@ -3,8 +3,10 @@ from agent import Player_agent_DQN
 from collections import namedtuple
 from collections import deque
 import matplotlib.pyplot as plt
+from typing import Tuple
 import einops
 import random
+import time
 import torch as t
 import numpy as np
 
@@ -47,6 +49,7 @@ class Training_agent:
 
         self.buffer = Replay_buffer(buffer_size)
         self.game = Game(size, connect)
+        self.losses = []
 
     def interact(self, steps:int) -> None:
         """
@@ -193,15 +196,17 @@ class Training_agent:
         plt.ylim(0, 1.1*max(smoothed_losses))
         plt.show()
 
-    def evaluate(self, episodes=50, turn_limit=50):
+    @t.inference_mode(mode=True)
+    def evaluate(self, episodes: int = 50, turn_limit: int = 100) -> Tuple[float, float]:
         """
         Record rewards from several agent games and return their mean and variance.
         """
         
         rewards = []
-        # Reset environment and ensure it's agent's turn
+        
+        for _ in range(episodes):  
 
-        for _ in range(episodes):    
+            # Reset environment and ensure it's agent's turn
             obs = self.game.reset()
             episode_reward = 0
 
@@ -210,7 +215,7 @@ class Training_agent:
 
             for i in range(turn_limit):
 
-                move = self.agent.epsilon_greedy_policy(obs)
+                move = self.agent.greedy_policy(obs)
 
                 # If move is not valid, do not advance the game and just record the transition with a punishment for invalid move
                 if not self.game.is_move_valid(move):
@@ -242,7 +247,7 @@ class Training_agent:
                     case Endstate.DRAW:
                         reward = self.reward_values.draw
 
-                # Save transition and update observation
+                # Add reward and update observation
                 episode_reward += reward
                 obs = next_obs
                 if obs.terminated:
@@ -253,3 +258,80 @@ class Training_agent:
         mean = np.mean(rewards)
         std = np.std(rewards)
         return mean, std
+
+    @t.inference_mode(mode=True)
+    def visualise(self, turn_limit: int = 100, opponent: None | str = None, delay = 0.1) -> None:
+        """
+        Prints every turn of a game played by the agent.
+        """
+        
+        print(f"Agent plays as {self.agent.side_as_char()}.")
+
+        # Reset environment and ensure it's agent's turn
+        obs = self.game.reset()
+
+        self.game.print_board()
+        time.sleep(delay)
+
+        if self.agent.side != self.game.next_player:
+            obs = self.opponent_move()
+
+            self.game.clear_printed_board()
+            self.game.print_board()
+            time.sleep(delay)
+
+
+        for _ in range(turn_limit):
+            
+            # Stop if terminated, otherwise let agent play
+            if obs.terminated: break
+
+            move = self.agent.greedy_policy(obs)
+
+            # If move is not valid, substitute with an opponent move to advance the game. 
+            if not self.game.is_move_valid(move):
+                print(f"Invalid move {move}, will use an opponent move to advance.")
+                obs = self.opponent_move()
+                if obs.terminated: break
+                obs = self.opponent_move()
+                if obs.terminated: break
+
+                time.sleep(delay)
+                self.game.clear_printed_board()
+                self.game.print_board()
+
+                continue
+            
+            # Else play the move, if the game has not terminated let opponent play
+            next_obs = self.game.play(move)
+
+            time.sleep(delay)
+            self.game.clear_printed_board()
+            self.game.print_board()
+            
+            if not next_obs.terminated:
+                next_obs = self.opponent_move()
+                time.sleep(delay)
+                self.game.clear_printed_board()
+                self.game.print_board()
+            
+            match next_obs.endstate:
+
+                case Endstate.NONE:
+                    pass
+
+                case Endstate.WON_1:
+                    if self.agent.side == 1:
+                        print(f"Game won on turn {self.game.turn}.")
+                    else:
+                        print(f"Game lost on turn {self.game.turn}.")
+
+                case Endstate.LOST_1:
+                    if self.agent.side == 1:
+                        print(f"Game lost on turn {self.game.turn}.")
+                    else:
+                        print(f"Game won on turn {self.game.turn}.")
+
+                case Endstate.DRAW:
+                    print(f"Game drawn on turn {self.game.turn}.")
+

@@ -3,6 +3,7 @@ from enum import Enum
 from scipy.signal import convolve2d
 from typing import Dict, Sequence
 from collections import namedtuple
+from sys import stdout
 
 class Endstate(Enum):
     NONE = 0
@@ -184,6 +185,13 @@ class Game:
         string_board = '\n'.join([' '.join(line) for line in char_board.tolist()])
         print(string_board)
         print('\n')
+
+    def clear_printed_board(self):
+        for _ in self.size:
+            stdout.write("\033[F")
+            stdout.write("\033[K")
+        stdout.flush()
+
 
 
 
