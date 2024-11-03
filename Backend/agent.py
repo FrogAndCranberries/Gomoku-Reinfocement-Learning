@@ -26,7 +26,7 @@ class Player_agent_DQN:
 
 
         self.rng = np.random.default_rng()
-        self.optimizer = t.optim.Adam(params=self.value_network.parameters(), lr=lr, maximize=True)
+        self.optimizer = t.optim.Adam(params=self.value_network.parameters(), lr=lr)
 
     
     def sync(self):
@@ -34,6 +34,8 @@ class Player_agent_DQN:
         Copies the parameters of the value network to the target network.
         """
         self.target_network.load_state_dict(self.value_network.state_dict())
+        for param in self.target_network.parameters():
+            param.requires_grad = False
 
 
     def greedy_policy(self, observation):
@@ -43,14 +45,14 @@ class Player_agent_DQN:
 
         # Flip board symbols if the agent plays as the -1 symbol and check input compatibility
         board_standardized = observation.board * self.side
-        if not board_standardized.shape[0] == self.board_size:
+        if not board_standardized.shape[-1] == self.board_size:
             raise ValueError(f"Observed board dimensions {board_standardized.shape} do not correspont to board size {self.board_size}.")
         
         # Pass board state through value network and get coordinates of the highest value move
-        with t.no_grad():
-            state = t.tensor(board_standardized[np.newaxis,np.newaxis,...], dtype=t.float32)
+        with t.inference_mode():
+            state = t.tensor(board_standardized, dtype=t.float32)
             action_values = np.asarray(self.value_network(state))
-            action_values2d = einops.rearrange(action_values, "b c w h -> (b c w) h")
+            action_values2d = einops.rearrange(action_values, "... w h -> (... w) h")
             max_action = np.unravel_index(np.argmax(action_values2d), action_values2d.shape)
             return max_action
     

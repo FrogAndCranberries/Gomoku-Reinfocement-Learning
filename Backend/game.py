@@ -50,7 +50,7 @@ class Game:
 
         # Evaluate game and return observation
         self.evaluate()
-        return Observation(self.board, self.terminated, self.endstate)
+        return self.get_observation()
     
     def get_valid_moves(self) -> np.ndarray:
         """
@@ -127,7 +127,7 @@ class Game:
         self.next_player = self.first_player
         self.terminated = False
         self.endstate = Endstate.NONE
-        return Observation(self.board, self.terminated, self.endstate)
+        return self.get_observation()
 
     def random_move(self) -> Observation:
         """
@@ -174,7 +174,8 @@ class Game:
         """
         Returns an observation of the current game state.
         """
-        return Observation(self.board, self.terminated, self.endstate)
+        board_tensor = self.board[np.newaxis,...]
+        return Observation(board_tensor, self.terminated, self.endstate)
     
     def print_board(self, fill = '.'):
         """

@@ -9,6 +9,7 @@ import random
 import time
 import torch as t
 import numpy as np
+from tqdm import tqdm
 
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "terminated"))
 Reward_values = namedtuple("Reward_values", ("valid", "invalid", "win", "loss", "draw"))
@@ -116,22 +117,23 @@ class Training_agent:
         # Get a sample batch from replay buffer and parse into separate tensors
         batch = self.buffer.sample(self.batch_size)
 
-        states      = t.tensor([transition.state for transition in batch], dtype=t.float32)
-        actions     = t.tensor([transition.action for transition in batch], dtype=t.int16)
-        rewards     = t.tensor([transition.reward for transition in batch], dtype=t.float32)
-        next_states = t.tensor([transition.next_state for transition in batch], dtype=t.float32)
-        terminated  = t.tensor([transition.terminated for transition in batch], dtype=t.bool)
+        states      = t.tensor(np.array([transition.state for transition in batch]), dtype=t.float32)
+        actions     = t.tensor(np.array([transition.action for transition in batch]), dtype=t.int32)
+        rewards     = t.tensor(np.array([transition.reward for transition in batch]), dtype=t.float32)
+        next_states = t.tensor(np.array([transition.next_state for transition in batch]), dtype=t.float32)
+        terminated  = t.tensor(np.array([transition.terminated for transition in batch]), dtype=t.bool)
 
-        # Get target values by summing rewards and target network's evaluation of next states
+        # Get target values by summing rewards and target network's evaluation of the best action in the next states
         # This is like letting the target network "peek" one step into the future for a hopefully more accurate evaluation
         next_state_values = self.agent.target_network(next_states)
-        max_next_values =  einops.reduce(next_state_values, "b i j -> b", "max")
+        max_next_values =  einops.reduce(next_state_values, "b c i j -> b", "max")
         max_next_values[terminated] = 0
         target_values = rewards + self.gamma * max_next_values
 
-        # Get current value network's evaluation of the taken actions
+        # Get current value network's evaluation of all actions in current states 
+        # Then extract only the values of the actions which were actually taken in each transition
         Q_values = self.agent.value_network(states)
-        chosen_action_Q_values = Q_values[t.arange(Q_values.size[0]), actions]
+        chosen_action_Q_values = Q_values[np.arange(Q_values.shape[0]),0,*actions.T]
 
         # Get MSE loss and make a gradient step on value network's parameters
         loss = t.nn.functional.mse_loss(chosen_action_Q_values, target_values)
@@ -153,7 +155,7 @@ class Training_agent:
         self.losses = []
         self.interact(interaction_steps)
 
-        for i in range(loops):
+        for i in tqdm(range(loops)):
 
             loss = self.update_weights()
             self.losses.append(loss)
@@ -188,7 +190,7 @@ class Training_agent:
         Plots the losses accumulated in the training loop.
         """
         # Smooth out the losses
-        smoothed_losses = t.nn.functional.conv1d(self.losses, t.ones(len(self.losses) // 50) / (len(self.losses) // 50), padding='valid')
+        smoothed_losses = np.convolve(np.array(self.losses), np.ones(len(self.losses) // 50) / (len(self.losses) // 50), mode='valid')
         plt.plot(smoothed_losses)
         plt.xlabel('Update step')
         plt.ylabel('Loss')
@@ -294,10 +296,9 @@ class Training_agent:
                 print(f"Invalid move {move}, will use an opponent move to advance.")
 
                 obs = self.opponent_move()
-                if obs.terminated: break
-                obs = self.opponent_move()
-                if obs.terminated: break
-
+                if not obs.terminated:
+                    obs = self.opponent_move()
+                
                 self.game.print_board()
                 time.sleep(delay)
 
@@ -340,10 +341,12 @@ class Training_agent:
 
 
 if __name__ == "__main__":
-    agent = Player_agent_DQN(4, 3, side=1,channels=[1,1], kernel_sizes=[3])
+
+    agent = Player_agent_DQN(3, 3, side=1,channels=[5,1], kernel_sizes=[3])
     ta = Training_agent(player_agent=agent, size=4, connect=3, opponent_type="random")
     result = ta.evaluate()
     print(result)
-    ta.training_loop(interaction_steps=1000, loops=100)
+    ta.training_loop(interaction_steps=1_000, loops=1_000)
     ta.plot_losses()
-    # ta.visualise(turn_limit=25, delay = 1)
+    print(ta.evaluate())
+    ta.visualise(turn_limit=25, delay = 1)
