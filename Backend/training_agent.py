@@ -116,11 +116,11 @@ class Training_agent:
         # Get a sample batch from replay buffer and parse into separate tensors
         batch = self.buffer.sample(self.batch_size)
 
-        states      = t.tensor([transition["state"] for transition in batch], dtype=t.int8)
-        actions     = t.tensor([transition["action"] for transition in batch], dtype=t.int16)
-        rewards     = t.tensor([transition["reward"] for transition in batch], dtype=t.float32)
-        next_states = t.tensor([transition["next_state"] for transition in batch], dtype=t.int8)
-        terminated  = t.tensor([transition["terminated"] for transition in batch], dtype=t.bool)
+        states      = t.tensor([transition.state for transition in batch], dtype=t.float32)
+        actions     = t.tensor([transition.action for transition in batch], dtype=t.int16)
+        rewards     = t.tensor([transition.reward for transition in batch], dtype=t.float32)
+        next_states = t.tensor([transition.next_state for transition in batch], dtype=t.float32)
+        terminated  = t.tensor([transition.terminated for transition in batch], dtype=t.bool)
 
         # Get target values by summing rewards and target network's evaluation of next states
         # This is like letting the target network "peek" one step into the future for a hopefully more accurate evaluation
@@ -196,7 +196,6 @@ class Training_agent:
         plt.ylim(0, 1.1*max(smoothed_losses))
         plt.show()
 
-    @t.inference_mode(mode=True)
     def evaluate(self, episodes: int = 50, turn_limit: int = 100) -> Tuple[float, float]:
         """
         Record rewards from several agent games and return their mean and variance.
@@ -259,8 +258,7 @@ class Training_agent:
         std = np.std(rewards)
         return mean, std
 
-    @t.inference_mode(mode=True)
-    def visualise(self, turn_limit: int = 100, opponent: None | str = None, delay = 0.1) -> None:
+    def visualise(self, turn_limit: int = 100, opponent: None | str = None, delay = 0.3) -> None:
         """
         Prints every turn of a game played by the agent.
         """
@@ -290,30 +288,34 @@ class Training_agent:
 
             # If move is not valid, substitute with an opponent move to advance the game. 
             if not self.game.is_move_valid(move):
+
+                self.game.clear_printed_board()
+
                 print(f"Invalid move {move}, will use an opponent move to advance.")
+
                 obs = self.opponent_move()
                 if obs.terminated: break
                 obs = self.opponent_move()
                 if obs.terminated: break
 
-                time.sleep(delay)
-                self.game.clear_printed_board()
                 self.game.print_board()
+                time.sleep(delay)
 
                 continue
             
             # Else play the move, if the game has not terminated let opponent play
             next_obs = self.game.play(move)
 
-            time.sleep(delay)
+            
             self.game.clear_printed_board()
             self.game.print_board()
+            time.sleep(delay)
             
             if not next_obs.terminated:
                 next_obs = self.opponent_move()
-                time.sleep(delay)
                 self.game.clear_printed_board()
                 self.game.print_board()
+                time.sleep(delay)
             
             match next_obs.endstate:
 
@@ -335,3 +337,13 @@ class Training_agent:
                 case Endstate.DRAW:
                     print(f"Game drawn on turn {self.game.turn}.")
 
+
+
+if __name__ == "__main__":
+    agent = Player_agent_DQN(4, 3, side=1,channels=[1,1], kernel_sizes=[3])
+    ta = Training_agent(player_agent=agent, size=4, connect=3, opponent_type="random")
+    result = ta.evaluate()
+    print(result)
+    ta.training_loop(interaction_steps=1000, loops=100)
+    ta.plot_losses()
+    # ta.visualise(turn_limit=25, delay = 1)

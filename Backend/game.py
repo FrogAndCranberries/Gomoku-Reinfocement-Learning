@@ -4,6 +4,7 @@ from scipy.signal import convolve2d
 from typing import Dict, Sequence
 from collections import namedtuple
 from sys import stdout
+import time
 
 class Endstate(Enum):
     NONE = 0
@@ -121,7 +122,7 @@ class Game:
         """
         Reset the game to initial state and return a new observation.
         """
-        self.board = np.zeros(self.size, self.size)
+        self.board = np.zeros((self.size, self.size), dtype=np.int8)
         self.turn = 0
         self.next_player = self.first_player
         self.terminated = False
@@ -184,10 +185,9 @@ class Game:
         char_board[self.board == -1] = 'O'
         string_board = '\n'.join([' '.join(line) for line in char_board.tolist()])
         print(string_board)
-        print('\n')
 
     def clear_printed_board(self):
-        for _ in self.size:
+        for _ in range(self.size):
             stdout.write("\033[F")
             stdout.write("\033[K")
         stdout.flush()
@@ -202,7 +202,12 @@ if __name__ == "__main__":
     # print(game.board)
     # game.board[0:2,0:3] = np.ones(3)
     # game.board[2:7,4] = np.ones((5)) * -1
+    time.sleep(1)
+    print("test")
     for i in range(20):
         obs = game.random_central_move()
         game.print_board()
+        
+        time.sleep(0.3)
+        game.clear_printed_board()
         if obs.terminated: break
