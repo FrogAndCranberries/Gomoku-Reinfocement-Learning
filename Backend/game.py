@@ -38,7 +38,7 @@ class Game:
 
         # Check shouldn't be needed while checks are done in interact fnc for training
         # Can be removed for performance if no errors are seen
-        if not self.is_move_valid(i,j):
+        if not self.is_move_valid(coords):
             raise IndexError(f"Tried to play at invalid field ({i}, {j}).")
         
         # Update the symbol on the board, flip next_player's symbol and increment turn counter
@@ -82,16 +82,16 @@ class Game:
         win_diagonal = convolve2d(self.board, diagonal, mode="valid", boundary="fill", fillvalue=0)
         win_antidiagonal = convolve2d(self.board, antidiagonal, mode="valid", boundary="fill", fillvalue=0)
 
-        won_1 = np.any((win_horizontal >= self.connect, 
-                        win_vertical >= self.connect,
-                        win_diagonal >= self.connect,
-                        win_antidiagonal >= self.connect))
+        won_1 = np.any((np.any(win_horizontal >= self.connect), 
+                        np.any(win_vertical >= self.connect),
+                        np.any(win_diagonal >= self.connect),
+                        np.any(win_antidiagonal >= self.connect)))
         
         
-        lost_1 = np.any((win_horizontal <= -self.connect, 
-                        win_vertical <= -self.connect,
-                        win_diagonal <= -self.connect,
-                        win_antidiagonal <= -self.connect))
+        lost_1 = np.any((np.any(win_horizontal <= -self.connect), 
+                        np.any(win_vertical <= -self.connect),
+                        np.any(win_diagonal <= -self.connect),
+                        np.any(win_antidiagonal <= -self.connect)))
         
         if won_1 and lost_1:
             raise ValueError(f"Somehow both players won on board {self.board}.")
@@ -132,7 +132,7 @@ class Game:
         Play a random valid move for the next player and return a new observation.
         """
         valid_moves = self.get_valid_moves()
-        random_move = self.rng.choice(valid_moves, size=1, axis = 0)
+        random_move = self.rng.choice(valid_moves, size=1, axis = 0).flatten()
         result = self.play(random_move)
         return result
 
@@ -142,7 +142,7 @@ class Game:
         """
         valid_moves = self.get_valid_moves()
         moves_by_center_distance = np.sum(np.abs(valid_moves - self.size // 2), axis=1)
-        central_move = np.argmin(moves_by_center_distance)
+        central_move = np.argmin(moves_by_center_distance).flatten()
         result = self.play(valid_moves[central_move, :])
         return result
     
@@ -162,7 +162,7 @@ class Game:
         distribution = weights / weights.sum
 
         # Sample a move
-        random_central_move = self.rng.choice(ordered_valid_moves, size=1, axis = 0, p=distribution)
+        random_central_move = self.rng.choice(ordered_valid_moves, size=1, axis = 0, p=distribution).flatten()
         result = self.play(random_central_move)
 
         return result
@@ -172,6 +172,17 @@ class Game:
         Returns an observation of the current game state.
         """
         return Observation(self.board, self.terminated, self.endstate)
+    
+    def print_board(self, fill = '.'):
+        """
+        Prints out the game board to console.
+        """
+        char_board = np.full(self.board.shape, fill)
+        char_board[self.board == 1] = 'X'
+        char_board[self.board == -1] = 'O'
+        string_board = '\n'.join([' '.join(line) for line in char_board.tolist()])
+        print(string_board)
+
 
 
 if __name__ == "__main__":
@@ -179,7 +190,8 @@ if __name__ == "__main__":
     # Testing
     game = Game(3, 2)
     print(game.board)
-    game.board[0:2,0:3] = np.ones(3)
+    #game.board[0:2,0:3] = np.ones(3)
     # game.board[2:7,4] = np.ones((5)) * -1
     game.get_valid_moves()
     game.random_move()
+    game.print_board()
