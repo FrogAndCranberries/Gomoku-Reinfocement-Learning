@@ -12,6 +12,9 @@ class Q_net(nn.Module):
 
         super().__init__()
 
+        if channels[0] != 3 or channels[-1] != 1:
+            raise ValueError(f"Q net must have 3 input and 1 output channel, not {channels} channels.")
+
         # Generate alternating Conv2d and ReLU layers using passed channel and kernel sizes
         layers = list(chain.from_iterable([
             [nn.Conv2d(in_channels=channels[index], out_channels=channels[index + 1], kernel_size=kernel, 
