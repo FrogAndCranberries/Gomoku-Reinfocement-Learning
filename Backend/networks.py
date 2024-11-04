@@ -1,8 +1,24 @@
 import numpy as np
 import torch as t
 import torch.nn as nn
+import einops
 from itertools import chain
 from typing import Iterable
+
+class SoftmaxPlanar(nn.Module):
+    """
+    Apply softmax over all values within one channel.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+    
+    def forward(self, x:t.Tensor) -> t.Tensor:
+        last_dim = x.shape[-1]
+        x_1d = einops.rearrange(x, "... h w -> ... (h w)")
+        x_softmaxed = nn.functional.softmax(x_1d, dim=-1)
+        x_2d = einops.rearrange(x_softmaxed, "... (h w) -> ... h w", w=last_dim)
+        return x_2d
+
 
 class Q_net(nn.Module):
     """
@@ -24,10 +40,9 @@ class Q_net(nn.Module):
         
         # Replace last ReLU with a 2d Softmax and create a sequential module
         layers.pop()
+        layers.append(SoftmaxPlanar())
 
-        layers.append(nn.Softmax2d())
+        self.network = nn.Sequential(*layers)
 
-        self.network = nn.Sequential(layers)
-
-    def forward(self, input:t.Tensor):
-        return self.network.forward(input)
+    def forward(self, x:t.Tensor) -> t.Tensor:
+        return self.network.forward(x)
