@@ -31,7 +31,7 @@ class Player_agent_DQN:
     
     def sync(self):
         """
-        Copies the parameters of the value network to the target network.
+        Copies the parameters of the value network to the target network, unlinking the target parameters from torch grad computation.
         """
         self.target_network.load_state_dict(self.value_network.state_dict())
         for param in self.target_network.parameters():
@@ -44,13 +44,17 @@ class Player_agent_DQN:
         """
 
         # Flip board symbols if the agent plays as the -1 symbol and check input compatibility
-        board_standardized = observation.board * self.side
-        if not board_standardized.shape[-1] == self.board_size:
-            raise ValueError(f"Observed board dimensions {board_standardized.shape} do not correspont to board size {self.board_size}.")
+        if self.side == 1:
+            side_adjusted_board = observation.board
+        else:
+            side_adjusted_board = observation.board[(1,0,2),...]
+            
+        if not side_adjusted_board.shape[-1] == self.board_size:
+            raise ValueError(f"Observed board dimensions {side_adjusted_board.shape} do not correspont to board size {self.board_size}.")
         
         # Pass board state through value network and get coordinates of the highest value move
         with t.inference_mode():
-            state = t.tensor(board_standardized, dtype=t.float32)
+            state = t.tensor(side_adjusted_board, dtype=t.float32)
             action_values = np.asarray(self.value_network(state))
             action_values2d = einops.rearrange(action_values, "... w h -> (... w) h")
             max_action = np.unravel_index(np.argmax(action_values2d), action_values2d.shape)

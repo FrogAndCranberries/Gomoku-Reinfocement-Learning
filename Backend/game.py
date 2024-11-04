@@ -174,8 +174,11 @@ class Game:
         """
         Returns an observation of the current game state.
         """
-        board_tensor = self.board[np.newaxis,...]
-        return Observation(board_tensor, self.terminated, self.endstate)
+
+        board_3channel = np.stack((self.board == 1, self.board == -1, self.board == 0))
+        board_3channel = board_3channel.astype(np.int8)
+        
+        return Observation(board_3channel, self.terminated, self.endstate)
     
     def print_board(self, fill = '.'):
         """
@@ -199,16 +202,18 @@ class Game:
 if __name__ == "__main__":
 
     # Testing
-    game = Game(5, 3)
+    game = Game(10, 3)
     # print(game.board)
-    # game.board[0:2,0:3] = np.ones(3)
-    # game.board[2:7,4] = np.ones((5)) * -1
-    time.sleep(1)
-    print("test")
-    for i in range(20):
-        obs = game.random_central_move()
-        game.print_board()
+    game.board[0:2,0:3] = np.ones(3)
+    game.board[2:7,4] = np.ones((5)) * -1
+    game.get_observation()
+
+    # time.sleep(1)
+    # print("test")
+    # for i in range(20):
+    #     obs = game.random_central_move()
+    #     game.print_board()
         
-        time.sleep(0.3)
-        game.clear_printed_board()
-        if obs.terminated: break
+    #     time.sleep(0.3)
+    #     game.clear_printed_board()
+    #     if obs.terminated: break
