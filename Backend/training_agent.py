@@ -33,7 +33,7 @@ class Replay_buffer:
 
 class Training_agent:
     def __init__(self, player_agent:Player_agent_DQN, size:int, connect:int, 
-                 opponent_type:str = "random", reward_values:Reward_values = Reward_values(1, -10, 1_000, -1_000, 10),
+                 opponent_type:str = "random", reward_values:Reward_values = Reward_values(0, -10, 100, -100, 1),
                  buffer_size:int = 200_000, batch_size:int = 32, gamma:float = 0.95) -> None:
         
         # Check opponent type is valid.
@@ -147,13 +147,13 @@ class Training_agent:
         return loss.item()
     
 
-    def training_loop(self, interaction_steps:int = 1_000, loops:int = 50_000, sync_period:int = 1_000) -> list[int]:
+    def training_loop(self, interaction_steps:int = 10, loops:int = 50_000, sync_period:int = 1_000) -> list[int]:
         """
         The player agent interacts with the environment and updates its network weights in a training loop, 
         periodically syncing value and target network weights.
         """
         self.losses = []
-        self.interact(interaction_steps)
+        self.interact(self.batch_size * 100)
 
         for i in tqdm(range(loops)):
 
@@ -305,20 +305,20 @@ class Training_agent:
                 continue
             
             # Else play the move, if the game has not terminated let opponent play
-            next_obs = self.game.play(move)
+            obs = self.game.play(move)
 
             
             self.game.clear_printed_board()
             self.game.print_board()
             time.sleep(delay)
             
-            if not next_obs.terminated:
-                next_obs = self.opponent_move()
+            if not obs.terminated:
+                obs = self.opponent_move()
                 self.game.clear_printed_board()
                 self.game.print_board()
                 time.sleep(delay)
             
-            match next_obs.endstate:
+            match obs.endstate:
 
                 case Endstate.NONE:
                     pass
@@ -342,11 +342,40 @@ class Training_agent:
 
 if __name__ == "__main__":
 
-    agent = Player_agent_DQN(3, 3, side=1,channels=[5,1], kernel_sizes=[3])
-    ta = Training_agent(player_agent=agent, size=4, connect=3, opponent_type="random")
+    # agent = Player_agent_DQN(board_size=3, connect=3, side=1,channels=[3,5,1], kernel_sizes=[3,3])
+    # agent.value_network.load_state_dict(t.load("value_network_3x3.pth"))
+    # game = Game(3,3,1)
+    # obs = game.reset()
+    # game.print_board()
+    # print("\n")
+    # while True:
+
+
+    #     agent_move = agent.greedy_policy(obs)
+    #     if not game.is_move_valid(agent_move):
+    #         agent_move = input()
+    #         agent_move = list(map(lambda x: int(x), agent_move.split(' ')))
+
+    #     obs = game.play(agent_move)
+
+    #     game.print_board()
+    #     print("\n")
+
+
+    #     move = input()
+    #     move = list(map(lambda x: int(x), move.split(' ')))
+    #     print(move)
+    #     obs = game.play(move)
+    #     game.print_board()
+    #     print("\n")
+
+
+    agent = Player_agent_DQN(board_size=3, connect=3, side=1,channels=[3,4,8,1], kernel_sizes=[3,3,3])
+    ta = Training_agent(player_agent=agent, size=3, connect=3, opponent_type="random")
     result = ta.evaluate()
     print(result)
-    ta.training_loop(interaction_steps=1_000, loops=1_000)
+    ta.training_loop(interaction_steps=10, loops=60_000)
     ta.plot_losses()
     print(ta.evaluate())
+    t.save(ta.agent.value_network.state_dict(), "value_network_3x3_3layer.pth")
     ta.visualise(turn_limit=25, delay = 1)
