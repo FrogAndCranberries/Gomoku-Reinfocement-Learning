@@ -53,7 +53,11 @@ class Training_agent:
         self.opponent: Opponent = self._create_opponent(opponent_type)
         self.losses: list = []
 
-    def training_loop(self, interaction_steps:int = 10, loops:int = 50_000, switch_sides=True, side_switch_period:int = 5_000, sync_period:int = 1_000) -> list[int]:
+    def run_training_loop(self, interaction_steps: int = 10, 
+                          loops: int = 50_000, 
+                          switch_sides: bool = True, 
+                          side_switch_period: int = 5_000, 
+                          sync_period: int = 1_000) -> list[int]:
         """
         The player agent interacts with the environment and updates its network weights in a training loop, 
         periodically syncing value and target network weights.
@@ -63,9 +67,12 @@ class Training_agent:
 
         for i in tqdm(range(loops)):
 
-            loss = self.update_weights()
+            loss = self._update_value_network_weights()
             self.losses.append(loss)
-            self.interact_fast(interaction_steps)
+            if self.agent.side == game.first_player:
+                self._play_game_as_first_player(interaction_steps)
+            else:
+                self._play_game_as_second_player(interaction_steps)
 
             if i % sync_period == 0:
                 self.agent.sync_networks()
@@ -75,81 +82,14 @@ class Training_agent:
 
         return self.losses
 
-    def update_weights(self) -> float:
-        """
-        Makes a single gradient step update on weights of player agent's value network 
-        by calculating loss on a sample batch from replay buffer.
-        Returns this iteration's loss.
-        """
-
-        # Get a sample batch from replay buffer and parse into separate tensors
-        states, actions, rewards, next_states, terminated = self._sample_batch_from_buffer()
-
-        # This is like letting the target network "peek" one step into the future for hopefully more accurate value prediction
-        target_values = self._calculate_target_values(rewards, next_states, terminated)
-
-        # Get current value network's evaluation of all actions in current states 
-        # Then extract only the values of the actions which were actually taken in each transition
-        Q_values = self.agent.value_network(states)
-        action_indices = np.unravel_index(actions, self.game.board.shape)
-        chosen_action_Q_values = Q_values[np.arange(Q_values.shape[0]),0,*action_indices]
-
-        # Get MSE loss and make a gradient step on value network's parameters
-        loss = t.nn.functional.mse_loss(chosen_action_Q_values, target_values)
-
-        self.agent.optimizer.zero_grad()
-
-        loss.backward()
-
-        self.agent.optimizer.step()
-
-        return loss.item()
-
-    def interact_fast(self, steps: int) -> None:
-        """
-        The agent interacts with the game for N steps with epsilon greedy policy, saving the transitions into the replay buffer.
-        """
-        game = self.game
-        game.reset()
-
-        if self.agent.side != game.next_player:
-            self._make_opponent_move()
-
-        for _ in range(steps):
-            
-            # Reset game if terminated and get agent to play
-            if game.obs.terminated:
-                game.reset()
-
-            initial_obs = game.obs
-
-            agent_move = self.agent.epsilon_greedy_policy(game.obs)
-
-            # If move is not valid, do not advance the game and just record the transition with a punishment for invalid move
-            if not self.game.is_move_valid(agent_move):
-                reward = self._determine_reward(valid_move=False)
-                self._push_to_buffer(game.obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
-                continue
-            
-            else:
-
-            # Else play the move, if the game has not terminated let opponent play, then get a reward according to game end state
-                self.game.make_move(agent_move)
-
-                if not game.obs.terminated:
-                    self._make_opponent_move()
-                
-                reward = self._determine_reward(valid_move=True)
-
-                self._push_to_buffer(initial_obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
-
-
     def plot_losses(self) -> None:
         """
         Plots the losses accumulated in the training loop.
         """
         # Smooth out the losses
-        smoothed_losses = np.convolve(np.array(self.losses), np.ones(len(self.losses) // 50) / (len(self.losses) // 50), mode='valid')
+        smoothed_losses = np.convolve(np.array(self.losses), 
+                                      np.ones(len(self.losses) // 50) / (len(self.losses) // 50), 
+                                      mode='valid')
         plt.plot(smoothed_losses)
         plt.xlabel('Update step')
         plt.ylabel('Loss')
@@ -169,6 +109,101 @@ class Training_agent:
         mean = np.mean(rewards)
         std = np.std(rewards)
         return mean, std
+
+    def _update_value_network_weights(self) -> float:
+        """
+        Makes a single gradient step update on weights of player agent's value network 
+        by calculating loss on a sample batch from replay buffer.
+        Returns this iteration's loss.
+        """
+
+        states, actions, rewards, next_states, terminated = self._sample_batch_from_buffer()
+
+        # This is like letting the target network "peek" one step into the future for hopefully more accurate value prediction
+        target_values = self._calculate_target_values(rewards, next_states, terminated)
+
+        Q_values = self.agent.value_network(states)
+        action_indices = np.unravel_index(actions, self.game.board.shape)
+        chosen_action_Q_values = Q_values[np.arange(Q_values.shape[0]),0,*action_indices]
+
+        # Get MSE loss between evaluation of actions taken and 
+        loss = t.nn.functional.mse_loss(chosen_action_Q_values, target_values)
+
+        self.agent.optimizer.zero_grad()
+
+        loss.backward()
+
+        self.agent.optimizer.step()
+
+        return loss.item()
+
+    def _play_game_as_first_player(self, total_turns: int) -> None:
+        """
+        The agent interacts with the game for N steps with epsilon greedy policy, saving the transitions into the replay buffer.
+        """
+        game = self.game
+        game.reset()
+
+        for _ in range(total_turns):
+            
+            initial_obs = game.obs
+
+            agent_move = self.agent.epsilon_greedy_policy(game.obs)
+
+            if not self.game.is_move_valid(agent_move):
+                reward = self._determine_reward(valid_move=False)
+                self._push_to_buffer(game.obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
+                continue
+            
+            else:
+                self.game.make_move(agent_move)
+
+                if not game.obs.terminated:
+                    self._make_opponent_move()
+                
+                reward = self._determine_reward(valid_move=True)
+
+                self._push_to_buffer(initial_obs.board, agent_move, reward, game.obs.board, initial_obs.terminated)
+
+            if game.obs.terminated:
+                game.reset()
+
+
+    def _play_game_as_second_player(self, total_turns: int) -> None:
+        """
+        The agent interacts with the game for N steps with epsilon greedy policy, saving the transitions into the replay buffer.
+        """
+        game = self.game
+        game.reset()
+        self._make_opponent_move()
+
+        for _ in range(total_turns):
+
+            initial_obs = game.obs
+
+            agent_move = self.agent.epsilon_greedy_policy(game.obs)
+
+            if not self.game.is_move_valid(agent_move):
+                reward = self._determine_reward(valid_move=False)
+                self._push_to_buffer(game.obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
+                continue
+            
+            else:
+
+                self.game.make_move(agent_move)
+
+                if not game.obs.terminated:
+                    self._make_opponent_move()
+                
+                reward = self._determine_reward(valid_move=True)
+
+                self._push_to_buffer(initial_obs.board, agent_move, reward, game.obs.board, initial_obs.terminated)
+                        
+            if game.obs.terminated:
+                game.reset()
+                self._make_opponent_move()
+
+
 
     def _get_episode_reward(self, turn_limit: int) -> float:
         episode_reward = 0
@@ -199,9 +234,9 @@ class Training_agent:
 
 
     def _add_experience_to_buffers(self):
-        self.interact_fast(self.batch_size * 100)
+        self._play_game_as_first_player(self.batch_size * 100)
         self.agent.side *= -1
-        self.interact_fast(self.batch_size * 100)
+        self._play_game_as_first_player(self.batch_size * 100)
         self.agent.side *= -1
     
 
@@ -340,7 +375,7 @@ if __name__ == "__main__":
     ta = Training_agent(player_agent=agent, size=3, connect=3, opponent_type="random_central", buffer_size=50_000)
     result = ta.evaluate()
     print(result)
-    ta.training_loop(interaction_steps=10, loops=16_000, switch_sides=True, side_switch_period=3_000)
+    ta.run_training_loop(interaction_steps=10, loops=16_000, switch_sides=True, side_switch_period=3_000)
     ta.plot_losses()
     print(ta.evaluate())
     # t.save(ta.agent.value_network.state_dict(), "value_network_3x3_3layer.pth")
