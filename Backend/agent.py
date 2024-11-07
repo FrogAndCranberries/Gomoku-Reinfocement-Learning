@@ -75,9 +75,6 @@ class Player_agent_DQN:
             input = observation.board
         else:
             input = observation.board[(1,0,2),...]
-            
-        if not input.shape[-1] == self.board_size:
-            raise ValueError(f"Observed board dimensions {input.shape} do not correspont to board size {self.board_size}.")
         
         return input
 
