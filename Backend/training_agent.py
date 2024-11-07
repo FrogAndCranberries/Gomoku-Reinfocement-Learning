@@ -128,7 +128,7 @@ class Training_agent:
             # If move is not valid, do not advance the game and just record the transition with a punishment for invalid move
             if not self.game.is_move_valid(agent_move):
                 reward = self._determine_reward(valid_move=False)
-                self._push_to_buffer(Transition(game.obs.board, agent_move, reward, game.obs.board, game.obs.terminated))
+                self._push_to_buffer(game.obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
                 continue
             
             else:
@@ -141,7 +141,7 @@ class Training_agent:
                 
                 reward = self._determine_reward(valid_move=True)
 
-                self._push_to_buffer(Transition(initial_obs.board, agent_move, reward, game.obs.board, game.obs.terminated))
+                self._push_to_buffer(initial_obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
 
 
     def plot_losses(self) -> None:
@@ -227,12 +227,14 @@ class Training_agent:
             case Endstate.DRAW:
                 print(f"Game drawn on turn {self.game.turn}.")
 
-    def _push_to_buffer(self, transition: Transition) -> None:
+    def _push_to_buffer(self, state: np.ndarray, action: int, reward: float, next_state: np.ndarray, terminated: bool) -> None:
 
         if agent.side == 1:
-            self.buffer_X.push(transition)
+            self.buffer_X.push(Transition(state, action, reward, next_state, terminated))
         else:
-            self.buffer_O.push(transition)
+            state = state[(1,0,2),...]
+            next_state = next_state[(1,0,2),...]
+            self.buffer_O.push(Transition(state, action, reward, next_state, terminated))
 
     def _calculate_target_values(self, rewards: Tensor, next_states: Tensor, terminated: Tensor) -> Tensor:
         next_state_values = self.agent.target_network(next_states)
@@ -333,12 +335,12 @@ if __name__ == "__main__":
 
 
 
-    agent = Player_agent_DQN(board_size=3, connect=3, player_side=1,channels=[3,1], kernel_sizes=[3])
+    agent = Player_agent_DQN(board_size=3, connect=3, player_side=1,channels=[3,4,8,1], kernel_sizes=[3,3,3])
     # agent.value_network.load_state_dict(t.load("value_network_3x3_3layer.pth"))
-    ta = Training_agent(player_agent=agent, size=3, connect=3, opponent_type="random_central")
+    ta = Training_agent(player_agent=agent, size=3, connect=3, opponent_type="random_central", buffer_size=50_000)
     result = ta.evaluate()
     print(result)
-    ta.training_loop(interaction_steps=10, loops=5_000)
+    ta.training_loop(interaction_steps=10, loops=16_000, switch_sides=True, side_switch_period=3_000)
     ta.plot_losses()
     print(ta.evaluate())
     # t.save(ta.agent.value_network.state_dict(), "value_network_3x3_3layer.pth")
