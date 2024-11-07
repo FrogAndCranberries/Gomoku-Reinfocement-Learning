@@ -1,202 +1,238 @@
 import numpy as np
 from enum import Enum
 from scipy.signal import convolve2d
-from typing import Dict, Sequence
 from collections import namedtuple
 from sys import stdout
-import time
+from abc import ABC, abstractmethod
 
 class Endstate(Enum):
     NONE = 0
-    WON_1 = 1
-    LOST_1 = 2
+    WON_X = 1
+    WON_O = 2
     DRAW = 3
 
 Observation = namedtuple("Observation", ("board", "terminated", "endstate"))
 
 class Game:
     """
-    Gomoku game instance
+    A connenct-N game instance.
     """
-    def __init__(self, size:int, connect:int, first_player:int = 1, seed = None):
 
-        if connect > size:
-            raise ValueError(f"Can't play connect-{connect} on board with size {size}")
-        self.size = size
-        self.connect = connect
-        self.board = np.zeros((size, size), dtype=np.int8)
-        self.turn = 0
-        self.first_player = first_player
-        self.next_player = first_player
-        self.terminated = False
-        self.endstate = Endstate.NONE
-        self.rng = np.random.default_rng(seed)
-
-    def play(self, coords:Sequence[int]) -> Observation:
+    def __init__(self, board_size: int, connect: int, first_player: int = 1) -> None:
         """
-        Next player plays at the passed coordinates, the game is evaluated and new observation returned.
+        Creates a game instance of connect-N on board with side length board_size where the first player is X for first_player = 1 and 
+        O for first_player = -1.
         """
-        i,j = coords
-
-        # Check shouldn't be needed while checks are done in interact fnc for training
-        # Can be removed for performance if no errors are seen
-        if not self.is_move_valid(coords):
-            raise IndexError(f"Tried to play at invalid field ({i}, {j}).")
+        if first_player != 1 and first_player != -1:
+            raise ValueError(f"First player's symbol must be 1 for X or -1 for O.")
+        if connect > board_size:
+            raise ValueError(f"Can't play connect-{connect} on board with size {board_size}.")
         
-        # Update the symbol on the board, flip next_player's symbol and increment turn counter
-        self.board[i,j] = self.next_player
-        self.next_player *= -1
-        self.turn += 1
+        self.board_size: int = board_size
+        self.max_index: int = board_size ** 2 - 1
+        self.connect: int = connect
+        self.board: np.ndarray = np.zeros((board_size, board_size), dtype=np.int8)
+        self.turn: int = 0
+        self.first_player: int = first_player
+        self.next_player: int = first_player
+        self.terminated: bool = False
+        self.endstate: Endstate = Endstate.NONE
+        self.win_check_kernels: dict = self._initialise_kernels()
+        self.valid_moves: list = list(range(board_size ** 2))
 
-        # Evaluate game and return observation
-        self.evaluate()
-        return self.get_observation()
-    
-    def get_valid_moves(self) -> np.ndarray:
-        """
-        Returns the coordinates for all valid moves on the game board.
-        """
-        valid_moves = np.stack(np.where(self.board == 0)).T
-        return valid_moves
-        
-    def is_move_valid(self, coords) -> bool:
-        """
-        Returns whether there is a free playing square at the passed coordinates.
-        """
-        i,j = coords
-        return i >= 0 and j >= 0 and i < self.size and j < self.size and self.board[i,j] == 0
-
-    def evaluate(self) -> None:
-        """
-        Evaluates whether any player has won, lost or drawn and if the game has terminated,
-        and updates the self.endstate and self.terminnated fields.
-        """
-
-        # Create check kernels
-        horizontal = np.ones((1,self.connect))
-        vertical = np.ones((self.connect,1))
-        diagonal = np.eye(self.connect)
-        antidiagonal = np.eye(self.connect)[::-1,:]
-
-        # Check for winning sequences
-        win_horizontal = convolve2d(self.board, horizontal, mode="valid", boundary="fill", fillvalue=0)
-        win_vertical = convolve2d(self.board, vertical, mode="valid", boundary="fill", fillvalue=0)
-        win_diagonal = convolve2d(self.board, diagonal, mode="valid", boundary="fill", fillvalue=0)
-        win_antidiagonal = convolve2d(self.board, antidiagonal, mode="valid", boundary="fill", fillvalue=0)
-
-        won_1 = np.any((np.any(win_horizontal >= self.connect), 
-                        np.any(win_vertical >= self.connect),
-                        np.any(win_diagonal >= self.connect),
-                        np.any(win_antidiagonal >= self.connect)))
-        
-        
-        lost_1 = np.any((np.any(win_horizontal <= -self.connect), 
-                        np.any(win_vertical <= -self.connect),
-                        np.any(win_diagonal <= -self.connect),
-                        np.any(win_antidiagonal <= -self.connect)))
-        
-        if won_1 and lost_1:
-            raise ValueError(f"Somehow both players won on board {self.board}.")
-        
-        # Update terminated and endstate fields
-        if won_1:
-            self.terminated = True
-            self.endstate = Endstate.WON_1
-            return
-
-        if lost_1:
-            self.terminated = True
-            self.endstate = Endstate.LOST_1
-            return
-
-        board_full = ~np.isin(0,self.board)
-
-        if board_full:
-            self.terminated = True
-            self.endstate = Endstate.DRAW
-        return
-    
-        # print(win_antidiagonal, win_diagonal, win_vertical, win_horizontal)
-    
-    def reset(self) -> Observation:
+    def reset(self) -> None:
         """
         Reset the game to initial state and return a new observation.
         """
-        self.board = np.zeros((self.size, self.size), dtype=np.int8)
+        self.board = np.zeros((self.board_size, self.board_size), dtype=np.int8)
         self.turn = 0
         self.next_player = self.first_player
         self.terminated = False
         self.endstate = Endstate.NONE
-        return self.get_observation()
+        self.valid_moves = list(range(self.board_size ** 2))
 
-    def random_move(self) -> Observation:
+    def make_move(self, index: int) -> None:
         """
-        Play a random valid move for the next player and return a new observation.
+        Next player plays at the passed flat index and the game result is evaluated.
         """
-        valid_moves = self.get_valid_moves()
-        random_move = self.rng.choice(valid_moves, size=1, axis = 0).flatten()
-        result = self.play(random_move)
-        return result
+        i,j = np.unravel_index(index, self.board.shape)
 
-    def most_central_move(self) -> Observation:
-        """
-        Play the most central valid move for the next player and return a new observation.
-        """
-        valid_moves = self.get_valid_moves()
-        moves_by_center_distance = np.sum(np.abs(valid_moves - self.size // 2), axis=1)
-        central_move_index = np.argmin(moves_by_center_distance)
-        central_move = valid_moves[central_move_index, :].flatten()
-        result = self.play(central_move)
-        return result
-    
-    def random_central_move(self) -> Observation:
-        """
-        Play a random valid move with higher probability near the board center for the next player and return a new observation.
-        """
+        assert self.is_move_valid(index)
+        
+        self.board[i,j] = self.next_player
+        self.valid_moves.remove(index)
+        self._advance_turn()
+        self._evaluate()
 
-        # Get valid moves and order by distance from center
-        valid_moves = self.get_valid_moves()
-        moves_by_center_distance = np.sum(np.abs(valid_moves - self.size // 2), axis=1)
-        ordered_indices = np.argsort(moves_by_center_distance)
-        ordered_valid_moves = valid_moves[ordered_indices, :]
-
-        # Get decaying probability distribution
-        weights = (valid_moves.shape[0] - np.arange(valid_moves.shape[0])) ** 2
-        distribution = weights / weights.sum()
-
-        # Sample a move
-        random_central_move = self.rng.choice(ordered_valid_moves, size=1, axis = 0, p=distribution).flatten()
-        result = self.play(random_central_move)
-
-        return result
-
-    def get_observation(self) -> Observation:
+    @property
+    def obs(self) -> Observation:
         """
         Returns an observation of the current game state.
         """
-
-        board_3channel = np.stack((self.board == 1, self.board == -1, self.board == 0))
-        board_3channel = board_3channel.astype(np.int8)
+        board_3_channel = np.stack((self.board == 1, self.board == -1, self.board == 0))
+        board_3_channel = board_3_channel.astype(np.int8)
         
-        return Observation(board_3channel, self.terminated, self.endstate)
+        return Observation(board_3_channel, self.terminated, self.endstate)
     
-    def print_board(self, fill = '.'):
+    def get_valid_moves(self) -> np.ndarray:
+        """
+        Returns an array of flat indices for all empty fields on the game board.
+        """
+        if self.terminated:
+            return np.empty(1)
+        return np.array(self.valid_moves)
+    
+    def is_move_valid(self, index: int) -> bool:
+        """
+        Returns whether there is a free playing square at the passed flat index.
+        """
+        return index in self.valid_moves
+    
+    def _advance_turn(self) -> None:
+        """
+        Flips the next player symbol between 1 and -1 and increments turn.
+        """
+        self.next_player *= -1
+        self.turn += 1
+        
+    def _evaluate(self) -> None:
+        """
+        Updates self.endstate and self.terminated fields.
+        """
+        won_X, won_O = self._find_winning_sequences()
+        
+        assert not (won_X and won_O)
+        
+        # Update terminated and endstate fields
+        if won_X:
+            self.terminated = True
+            self.endstate = Endstate.WON_X
+            return
+
+        if won_O:
+            self.terminated = True
+            self.endstate = Endstate.WON_O
+            return
+
+        if self._is_draw(won_X, won_O):
+            self.terminated = True
+            self.endstate = Endstate.DRAW
+            return
+        
+    def _is_draw(self, won_X: bool, won_O: bool) -> None:
+        board_is_full = ~np.isin(0,self.board)
+        return not won_X and not won_O and board_is_full
+    
+    def _find_winning_sequences(self) -> tuple:
+        """
+        Returns two bools whether there are any X and any O winning sequences
+        """
+        wins_X = []
+        wins_O = []
+
+        for kernel in self.win_check_kernels.values():
+            symbol_sequence_in_kernel_dir = convolve2d(self.board, kernel, mode="valid")
+            wins_X.append(np.any(symbol_sequence_in_kernel_dir >= self.connect))
+            wins_O.append(np.any(symbol_sequence_in_kernel_dir <= -self.connect))
+
+        won_X = np.any(np.asarray(wins_X))
+        won_O = np.any(np.asarray(wins_O))
+
+        return won_X, won_O
+    
+    def _initialise_kernels(self) -> np.recarray:
+
+        kernels = {}
+        kernels["horizontal"] = np.ones((1,self.connect), dtype=np.int8)
+        kernels["vertical"] = np.ones((self.connect,1), dtype=np.int8)
+        kernels["diagonal"] = np.eye(self.connect, dtype=np.int8)
+        kernels["antidiagonal"] = np.fliplr(np.eye(self.connect, dtype=np.int8))
+
+        return kernels
+    
+
+
+class GameUtils:
+
+    @staticmethod
+    def print_board(game: Game, fill: str = '.') -> None:
         """
         Prints out the game board to console.
         """
-        char_board = np.full(self.board.shape, fill)
-        char_board[self.board == 1] = 'X'
-        char_board[self.board == -1] = 'O'
-        string_board = '\n'.join([' '.join(line) for line in char_board.tolist()])
-        print(string_board)
+        board_as_chars = np.full(game.board.shape, fill)
+        board_as_chars[game.board == 1] = 'X'
+        board_as_chars[game.board == -1] = 'O'
+        board_as_string = '\n'.join([' '.join(line) for line in board_as_chars.tolist()])
+        print(board_as_string)
 
-    def clear_printed_board(self):
-        for _ in range(self.size):
+    @staticmethod
+    def clear_printed_board(game:Game = None):
+        """
+        Deletes a board printed by print_board.
+        """
+        for _ in range(game.board_size):
             stdout.write("\033[F")
             stdout.write("\033[K")
         stdout.flush()
 
 
+class Opponent(ABC):
+    
+    def __init__(self, game: Game):
+        self.game = game
+        self.rng = np.random.default_rng()
+
+    @abstractmethod
+    def get_move(self):
+        pass
+    
+    def manhattan_distance_from_center(self, index: int | np.ndarray) -> float:
+        board_size = self.game.board_size
+        i = index // board_size
+        j = index % board_size
+
+        return np.abs(i - board_size // 2) + np.abs(j - board_size // 2)
+    
+class RandomOpponent(Opponent):
+
+    def get_move(self) -> int:
+        """
+        Returns a random valid move for the next player.
+        """
+        valid_moves = self.game.get_valid_moves()
+        random_move = self.rng.choice(valid_moves, size=1)
+        return random_move
+    
+class CentralOpponent(Opponent):
+
+    def get_move(self) -> int:
+        """
+        Returns the most central valid move for the next player.
+        """
+        valid_moves = self.game.get_valid_moves()
+        distances_from_center = self.manhattan_distance_from_center(valid_moves)
+        most_central_move = valid_moves[np.argmin(distances_from_center)]
+        return most_central_move
+
+class RandomCentralOpponent(Opponent):
+
+    def get_move(self) -> int:
+        """
+        Returns a random valid move with higher probability near the board center for the next player.
+        """
+
+        # Get valid moves and order by distance from center
+        valid_moves = self.game.get_valid_moves()
+        distances_from_center = self.manhattan_distance_from_center(valid_moves)
+        ordered_indices = np.argsort(distances_from_center)
+        ordered_valid_moves = valid_moves[ordered_indices]
+
+        # Get decaying probability distribution
+        weights = (valid_moves.shape[0] - np.arange(valid_moves.shape[0])) ** 2
+        distribution = weights / weights.sum()
+
+        random_central_move = self.rng.choice(ordered_valid_moves, size=1, p=distribution)
+        return random_central_move
 
 
 if __name__ == "__main__":
