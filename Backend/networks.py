@@ -29,13 +29,22 @@ class Q_net(nn.Module):
         if channels[0] != 3 or channels[-1] != 1:
             raise ValueError(f"Q net must have 3 input and 1 output channel, not {channels} channels.")
 
+
+
         layers = []
-        for index, kernel in enumerate(kernel_sizes):
+        for index, kernel_size in enumerate(kernel_sizes):
+
+            padding_left = (kernel_size - 1) // 2
+            padding_right = kernel_size // 2
+            padding_top = (kernel_size - 1) // 2
+            padding_bottom = kernel_size // 2
+
+            layers.append(nn.ZeroPad2d(padding=(padding_left, padding_right, padding_top, padding_bottom)))
             layers.append(nn.Conv2d(in_channels=channels[index], 
                                     out_channels=channels[index + 1], 
-                                    kernel_size=kernel, 
-                                    padding=(kernel - 1) // 2, 
-                                    padding_mode="zeros"))
+                                    kernel_size=kernel_size, 
+                                    padding=0))
+                                    
             layers.append(nn.ReLU())
         
         layers.pop()

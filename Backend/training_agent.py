@@ -69,7 +69,7 @@ class Training_agent:
 
             loss = self._update_value_network_weights()
             self.losses.append(loss)
-            if self.agent.side == game.first_player:
+            if self.agent.side == self.game.first_player:
                 self._play_game_as_first_player(interaction_steps)
             else:
                 self._play_game_as_second_player(interaction_steps)
@@ -370,12 +370,12 @@ if __name__ == "__main__":
 
 
 
-    agent = Player_agent_DQN(board_size=3, connect=3, player_side=1,channels=[3,4,8,1], kernel_sizes=[3,3,3])
+    agent = Player_agent_DQN(board_size=5, connect=4, player_side=1,channels=[3,4,8,1], kernel_sizes=[4,4,4])
     # agent.value_network.load_state_dict(t.load("value_network_3x3_3layer.pth"))
-    ta = Training_agent(player_agent=agent, size=3, connect=3, opponent_type="random_central", buffer_size=50_000)
+    ta = Training_agent(player_agent=agent, size=5, connect=4, opponent_type="random_central", buffer_size=50_000)
     result = ta.evaluate()
     print(result)
-    ta.run_training_loop(interaction_steps=10, loops=16_000, switch_sides=True, side_switch_period=3_000)
+    ta.run_training_loop(interaction_steps=10, loops=20_000, switch_sides=True, side_switch_period=3_000)
     ta.plot_losses()
     print(ta.evaluate())
     # t.save(ta.agent.value_network.state_dict(), "value_network_3x3_3layer.pth")
