@@ -76,6 +76,7 @@ class Training_agent:
 
             if i % sync_period == 0:
                 self.agent.sync_networks()
+                self.agent.decay_epsilon()
             
             if switch_sides and i % side_switch_period == 0:
                 self.agent.side *= -1

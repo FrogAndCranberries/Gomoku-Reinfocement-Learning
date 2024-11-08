@@ -13,7 +13,8 @@ class Player_agent_DQN:
                  channels: Sequence[int], 
                  kernel_sizes: Sequence[int], 
                  player_side: int = 1,
-                 epsilon: float = 0.05, 
+                 epsilon: float = 0.2,
+                 epsilon_multiplier_per_nn_sync: float = 0.99,
                  lr: float = 0.003) -> None:
         
 
@@ -25,6 +26,7 @@ class Player_agent_DQN:
         self.connect = connect
         self.epsilon = epsilon
         self.action_space_size = board_size ** 2
+        self.epsilon_multiplier_per_nn_sync = epsilon_multiplier_per_nn_sync
 
         self.value_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
         self.target_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
@@ -75,6 +77,9 @@ class Player_agent_DQN:
             return "X"
         else:
             return "O"
+        
+    def decay_epsilon(self) -> None:
+        self.epsilon *= self.epsilon_multiplier_per_nn_sync
         
     def _observation_to_nn_input(self, observation: Observation) -> Tensor:
         
