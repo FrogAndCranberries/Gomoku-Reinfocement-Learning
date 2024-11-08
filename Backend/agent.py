@@ -3,12 +3,18 @@ import torch as t
 from torch import Tensor
 from networks import Q_net
 from game import Observation
+from typing import Sequence
 import einops
 
 class Player_agent_DQN:
-    def __init__(self, board_size, connect, 
-                 channels, kernel_sizes, player_side = 1,
-                 epsilon = 0.05, lr = 0.003) -> None:
+    def __init__(self, 
+                 board_size: int, 
+                 connect: int, 
+                 channels: Sequence[int], 
+                 kernel_sizes: Sequence[int], 
+                 player_side: int = 1,
+                 epsilon: float = 0.05, 
+                 lr: float = 0.003) -> None:
         
 
         if player_side != -1 and player_side != 1:
@@ -18,6 +24,7 @@ class Player_agent_DQN:
         self.board_size = board_size
         self.connect = connect
         self.epsilon = epsilon
+        self.action_space_size = board_size ** 2
 
         self.value_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
         self.target_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
@@ -57,13 +64,13 @@ class Player_agent_DQN:
         the best move according to the value network otherwise.
         """
         if self.rng.random() < self.epsilon:
-            action = self.rng.integers(low=0, high=self.board_size ** 2, size=1)[0]
+            action = self.rng.integers(low=0, high=self.action_space_size, size=1)[0]
             return action
         else:
             action = self.greedy_policy(observation)
             return action
 
-    def get_player_side_as_char(self):
+    def get_player_side_as_char(self) -> str:
         if self.side == 1:
             return "X"
         else:
