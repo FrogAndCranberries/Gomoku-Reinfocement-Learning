@@ -3,12 +3,22 @@ from enum import Enum
 from scipy.signal import convolve2d
 from collections import namedtuple
 from sys import stdout
+from opponent import Opponent
 
-class Endstate(Enum):
-    NONE = 0
-    WON_X = 1
-    WON_O = 2
-    DRAW = 3
+class MoveResult(Enum):
+    STANDARD = 0
+    INVALID = 1
+    WON_X = 2
+    WON_O = 3
+    DRAW = 4
+
+class Side(Enum):
+    X = 1
+    O = -1
+
+    @property
+    def switch(self):
+        return Side.X if self == Side.O else Side.O
 
 Observation = namedtuple("Observation", ("board", "terminated", "endstate"))
 
@@ -17,13 +27,10 @@ class Game:
     A connenct-N game instance.
     """
 
-    def __init__(self, board_size: int, connect: int, first_player: int = 1) -> None:
+    def __init__(self, board_size: int, connect: int, first_player: Side, opponent: Opponent) -> None:
         """
-        Creates a game instance of connect-N on board with side length board_size where the first player is X for first_player = 1 and 
-        O for first_player = -1.
+        Creates a game instance of connect-N on board with side length board_size
         """
-        if first_player != 1 and first_player != -1:
-            raise ValueError(f"First player's symbol must be 1 for X or -1 for O.")
         if connect > board_size:
             raise ValueError(f"Can't play connect-{connect} on board with size {board_size}.")
         
@@ -32,12 +39,13 @@ class Game:
         self.connect: int = connect
         self.board: np.ndarray = np.zeros((board_size, board_size), dtype=np.int8)
         self.turn: int = 0
-        self.first_player: int = first_player
-        self.next_player: int = first_player
+        self.first_player: Side = first_player
+        self.next_player: Side = first_player
         self.terminated: bool = False
-        self.endstate: Endstate = Endstate.NONE
+        self.last_move_result: MoveResult = MoveResult.STANDARD
         self.win_check_kernels: dict = self._initialise_kernels()
         self.valid_moves: list = list(range(board_size ** 2))
+        self.opponent = opponent
 
     def reset(self) -> None:
         """
@@ -47,21 +55,34 @@ class Game:
         self.turn = 0
         self.next_player = self.first_player
         self.terminated = False
-        self.endstate = Endstate.NONE
+        self.last_move_result = MoveResult.STANDARD
         self.valid_moves = list(range(self.board_size ** 2))
 
-    def make_move(self, index: int) -> None:
+    def take_turns(self, agent_move: int) -> None:
         """
         Next player plays at the passed flat index and the game result is evaluated.
         """
-        i,j = np.unravel_index(index, self.board.shape)
 
-        assert self.is_move_valid(index)
+        if not self.is_move_valid(agent_move):
+            self.last_move_result = MoveResult.INVALID
+            return
         
-        self.board[i,j] = self.next_player
+        self._record_move(agent_move)
+
+        if self.last_move_result == MoveResult.STANDARD:
+            self.opponent_move()
+
+    def opponent_move(self) -> None:
+        opponent_move = self.opponent.get_move(self)
+        self._record_move(opponent_move)
+
+
+    def _record_move(self, index: int) -> None:
+        i,j = np.unravel_index(index, self.board.shape)
+        self.board[i,j] = self.next_player.value
         self.valid_moves.remove(index)
-        self._advance_turn()
         self._evaluate()
+        self._advance_turn()
 
     @property
     def obs(self) -> Observation:
@@ -71,7 +92,7 @@ class Game:
         board_3_channel = np.stack((self.board == 1, self.board == -1, self.board == 0))
         board_3_channel = board_3_channel.astype(np.int8)
         
-        return Observation(board_3_channel, self.terminated, self.endstate)
+        return Observation(board_3_channel, self.terminated, self.last_move_result)
     
     def get_valid_moves(self) -> np.ndarray:
         """
@@ -91,7 +112,7 @@ class Game:
         """
         Flips the next player symbol between 1 and -1 and increments turn.
         """
-        self.next_player *= -1
+        self.next_player = self.next_player.switch
         self.turn += 1
         
     def _evaluate(self) -> None:
@@ -105,17 +126,17 @@ class Game:
         # Update terminated and endstate fields
         if won_X:
             self.terminated = True
-            self.endstate = Endstate.WON_X
+            self.last_move_result = MoveResult.WON_X
             return
 
         if won_O:
             self.terminated = True
-            self.endstate = Endstate.WON_O
+            self.last_move_result = MoveResult.WON_O
             return
 
         if self._is_draw(won_X, won_O):
             self.terminated = True
-            self.endstate = Endstate.DRAW
+            self.last_move_result = MoveResult.DRAW
             return
         
     def _is_draw(self, won_X: bool, won_O: bool) -> None:
@@ -157,8 +178,8 @@ class GameUtils:
         Prints out the game board to console.
         """
         board_as_chars = np.full(game.board.shape, fill)
-        board_as_chars[game.board == 1] = 'X'
-        board_as_chars[game.board == -1] = 'O'
+        board_as_chars[game.board == 1] = Side(1).name
+        board_as_chars[game.board == -1] = Side(-1).name
         board_as_string = '\n'.join([' '.join(line) for line in board_as_chars.tolist()])
         print(board_as_string)
 

@@ -14,7 +14,7 @@ from opponent import *
 from dataclasses import dataclass
 
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "terminated"))
-Reward_values = namedtuple("Reward_values", ("valid", "invalid", "win", "loss", "draw"))
+Reward_values = namedtuple("Reward_values", ("standard", "invalid", "win", "loss", "draw"))
 
 class ReplayBuffer:
     def __init__(self, size: int) -> None:
@@ -35,7 +35,7 @@ class ReplayBuffer:
 @dataclass(slots=True)
 class TrainingConfig:
     opponent_type: str = "random"
-    first_player: int = 1
+    first_player: Side = Side.X
     reward_values: Reward_values = Reward_values(0, -10, 100, -100, 1)
     buffer_size: int = 200_000
     batch_size: int = 32
@@ -84,7 +84,7 @@ class TrainingAgent:
                 self.agent.decay_epsilon()
             
             if switch_sides and i % side_switch_period == 0:
-                self.agent.side *= -1
+                self.agent.side = self.agent.side.switch
 
         return self.losses
 
@@ -143,71 +143,25 @@ class TrainingAgent:
 
         return loss.item()
 
-    def _play_game_as_first_player(self, total_turns: int) -> None:
-        """
-        The agent interacts with the game for N steps with epsilon greedy policy, saving the transitions into the replay buffer.
-        """
+    def _play_game(self, total_turns: int) -> None:
         game = self.game
         game.reset()
-
-        for _ in range(total_turns):
-            
-            initial_obs = game.obs
-
-            agent_move = self.agent.epsilon_greedy_policy(game.obs)
-
-            if not self.game.is_move_valid(agent_move):
-                reward = self._determine_reward(valid_move=False)
-                self._push_to_buffer(game.obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
-                continue
-            
-            else:
-                self.game.make_move(agent_move)
-
-                if not game.obs.terminated:
-                    self._make_opponent_move()
-                
-                reward = self._determine_reward(valid_move=True)
-
-                self._push_to_buffer(initial_obs.board, agent_move, reward, game.obs.board, initial_obs.terminated)
-
-            if game.obs.terminated:
-                game.reset()
-
-
-    def _play_game_as_second_player(self, total_turns: int) -> None:
-        """
-        The agent interacts with the game for N steps with epsilon greedy policy, saving the transitions into the replay buffer.
-        """
-        game = self.game
-        game.reset()
-        self._make_opponent_move()
+        if game.first_player != self.agent.side:
+            game.opponent_move()
 
         for _ in range(total_turns):
 
             initial_obs = game.obs
+            move = self.agent.epsilon_greedy_policy(initial_obs)
+            game.take_turns(move)
+            reward = self._determine_reward()
 
-            agent_move = self.agent.epsilon_greedy_policy(game.obs)
+            self._push_to_buffer(initial_obs.board, move, reward, game.obs.board, game.obs.terminated)
 
-            if not self.game.is_move_valid(agent_move):
-                reward = self._determine_reward(valid_move=False)
-                self._push_to_buffer(game.obs.board, agent_move, reward, game.obs.board, game.obs.terminated)
-                continue
-            
-            else:
-
-                self.game.make_move(agent_move)
-
-                if not game.obs.terminated:
-                    self._make_opponent_move()
-                
-                reward = self._determine_reward(valid_move=True)
-
-                self._push_to_buffer(initial_obs.board, agent_move, reward, game.obs.board, initial_obs.terminated)
-                        
             if game.obs.terminated:
                 game.reset()
-                self._make_opponent_move()
+                if game.first_player != self.agent.side:
+                    game.opponent_move()
 
 
 
@@ -230,7 +184,7 @@ class TrainingAgent:
                 continue
             
             else:
-                self.game.make_move(agent_move)
+                self.game.take_turns(agent_move)
                 if not game.obs.terminated:
                     self._make_opponent_move()
                 
@@ -241,36 +195,39 @@ class TrainingAgent:
 
     def _add_experience_to_buffers(self) -> None:
         self._play_game_as_first_player(self.batch_size * 100)
-        self.agent.side *= -1
+        self.agent.side = self.agent.side.switch
         self._play_game_as_first_player(self.batch_size * 100)
-        self.agent.side *= -1
+        self.agent.side = self.agent.side.switch
     
 
     def _print_endstate(self) -> None:
 
         match self.game.obs.endstate:
 
-            case Endstate.NONE:
+            case MoveResult.STANDARD:
                 pass
 
-            case Endstate.WON_X:
-                if self.agent.side == 1:
+            case MoveResult.INVALID:
+                pass
+
+            case MoveResult.WON_X:
+                if self.agent.side == Side.X:
                     print(f"Game won on turn {self.game.turn}.")
                 else:
                     print(f"Game lost on turn {self.game.turn}.")
 
-            case Endstate.WON_O:
-                if self.agent.side == 1:
-                    print(f"Game lost on turn {self.game.turn}.")
-                else:
+            case MoveResult.WON_O:
+                if self.agent.side == Side.O:
                     print(f"Game won on turn {self.game.turn}.")
+                else:
+                    print(f"Game lost on turn {self.game.turn}.")
 
-            case Endstate.DRAW:
+            case MoveResult.DRAW:
                 print(f"Game drawn on turn {self.game.turn}.")
 
     def _push_to_buffer(self, state: np.ndarray, action: int, reward: float, next_state: np.ndarray, terminated: bool) -> None:
 
-        if agent.side == 1:
+        if agent.side == Side.X:
             self.replay_buffer_X.push(Transition(state, action, reward, next_state, terminated))
         else:
             state = state[(1,0,2),...]
@@ -286,7 +243,7 @@ class TrainingAgent:
 
     def _sample_batch_from_buffer(self) -> tuple[Tensor, ...]:
 
-        if self.agent.side == 1:
+        if self.agent.side == Side.X:
             batch = self.replay_buffer_X.sample(self.batch_size)
         else:
             batch = self.replay_buffer_O.sample(self.batch_size)
@@ -301,31 +258,31 @@ class TrainingAgent:
 
     def _make_opponent_move(self) -> None:
             opponent_move = self.opponent.get_move()
-            self.game.make_move(opponent_move)
+            self.game.take_turns(opponent_move)
 
-    def _determine_reward(self, valid_move=True) -> float:
+    def _determine_reward(self) -> float:
 
-        if not valid_move:
-            return self.reward_values.invalid
+        match self.game.last_move_result:
 
-        match self.game.endstate:
+            case MoveResult.STANDARD:
+                return self.reward_values.standard
+            
+            case MoveResult.INVALID:
+                return self.reward_values.invalid
 
-            case Endstate.NONE:
-                return self.reward_values.valid
-
-            case Endstate.WON_X:
-                if self.agent.side == 1:
+            case MoveResult.WON_X:
+                if self.agent.side == Side.X:
                     return self.reward_values.win
                 else:
                     return self.reward_values.loss
 
-            case Endstate.WON_O:
-                if self.agent.side == 1:
-                    return self.reward_values.loss
-                else:
+            case MoveResult.WON_O:
+                if self.agent.side == Side.O:
                     return self.reward_values.win
+                else:
+                    return self.reward_values.loss
 
-            case Endstate.DRAW:
+            case MoveResult.DRAW:
                 return self.reward_values.draw
             
     def _create_opponent(self, opponent_type) -> Opponent:
