@@ -10,6 +10,7 @@ import torch as t
 from torch import Tensor
 import numpy as np
 from tqdm import tqdm
+from opponent import *
 
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "terminated"))
 Reward_values = namedtuple("Reward_values", ("valid", "invalid", "win", "loss", "draw"))
@@ -343,7 +344,7 @@ class Training_agent:
 if __name__ == "__main__":
 
     # agent = Player_agent_DQN(board_size=3, connect=3, player_side=-1,channels=[3,4,8,1], kernel_sizes=[3,3,3])
-    # agent.value_network.load_state_dict(t.load("value_network_3x3_3layer.pth"))
+    # agent.value_network.load_state_dict(t.load("backend/models/value_network_3x3_3layer.pth"))
     # game = Game(3,3,1)
     # obs = game.reset()
     # game.print_board()
@@ -372,12 +373,12 @@ if __name__ == "__main__":
 
 
     agent = Player_agent_DQN(board_size=5, connect=4, player_side=1,channels=[3,4,8,1], kernel_sizes=[4,4,4])
-    # agent.value_network.load_state_dict(t.load("value_network_3x3_3layer.pth"))
+    # agent.value_network.load_state_dict(t.load("backend/models/value_network_3x3_3layer.pth"))
     ta = Training_agent(player_agent=agent, size=5, connect=4, opponent_type="random_central", buffer_size=50_000)
     result = ta.evaluate()
     print(result)
     ta.run_training_loop(interaction_steps=10, loops=10_000, switch_sides=True, side_switch_period=3_000)
     ta.plot_losses()
     print(ta.evaluate())
-    t.save(ta.agent.value_network.state_dict(), "value_network_4x4_3layer.pth")
+    t.save(ta.agent.value_network.state_dict(), "backend/models/value_network_4x4_3layer.pth")
     # ta.visualise(turn_limit=25, delay = 1)
