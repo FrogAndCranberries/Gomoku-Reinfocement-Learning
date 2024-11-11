@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import numpy as np
 import torch as t
 from torch import Tensor
@@ -6,34 +7,36 @@ from game import Observation
 from typing import Sequence
 import einops
 
-class Player_agent_DQN:
-    def __init__(self, 
-                 board_size: int, 
-                 connect: int, 
-                 channels: Sequence[int], 
-                 kernel_sizes: Sequence[int], 
-                 player_side: int = 1,
-                 epsilon: float = 0.2,
-                 epsilon_multiplier_per_nn_sync: float = 0.99,
-                 lr: float = 0.003) -> None:
-        
+@dataclass(slots=True)
+class AgentConfig:
+    board_size: int
+    connect: int
+    channels: Sequence[int]
+    kernel_sizes: Sequence[int]
+    player_side: int = 1
+    epsilon: float = 0.2
+    epsilon_multiplier_per_nn_sync: float = 0.99
+    lr: float = 0.003
 
-        if player_side != -1 and player_side != 1:
-            raise ValueError(f"Side must be 1 or -1, not {player_side}.")
+class PlayerAgentDQN:
+    def __init__(self, cfg: AgentConfig) -> None:
+    
+        if cfg.player_side != -1 and cfg.player_side != 1:
+            raise ValueError(f"Side must be 1 or -1, not {cfg.player_side}.")
         
-        self.side = player_side
-        self.board_size = board_size
-        self.connect = connect
-        self.epsilon = epsilon
-        self.action_space_size = board_size ** 2
-        self.epsilon_multiplier_per_nn_sync = epsilon_multiplier_per_nn_sync
+        self.side = cfg.player_side
+        self.board_size = cfg.board_size
+        self.connect = cfg.connect
+        self.epsilon = cfg.epsilon
+        self.action_space_size = cfg.board_size ** 2
+        self.epsilon_multiplier_per_nn_sync = cfg.epsilon_multiplier_per_nn_sync
 
-        self.value_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
-        self.target_network = Q_net(channels=channels, kernel_sizes=kernel_sizes)
+        self.value_network = Q_net(channels=cfg.channels, kernel_sizes=cfg.kernel_sizes)
+        self.target_network = Q_net(channels=cfg.channels, kernel_sizes=cfg.kernel_sizes)
         self.sync_networks()
 
         self.rng = np.random.default_rng()
-        self.optimizer = t.optim.Adam(params=self.value_network.parameters(), lr=lr)
+        self.optimizer = t.optim.Adam(params=self.value_network.parameters(), lr=cfg.lr)
 
     
     def sync_networks(self) -> None:

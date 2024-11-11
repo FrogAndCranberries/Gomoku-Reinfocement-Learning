@@ -1,5 +1,5 @@
 from game import *
-from agent import Player_agent_DQN
+from agent import PlayerAgentDQN
 from collections import namedtuple
 from collections import deque
 import matplotlib.pyplot as plt
@@ -11,11 +11,12 @@ from torch import Tensor
 import numpy as np
 from tqdm import tqdm
 from opponent import *
+from dataclasses import dataclass
 
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "terminated"))
 Reward_values = namedtuple("Reward_values", ("valid", "invalid", "win", "loss", "draw"))
 
-class Replay_buffer:
+class ReplayBuffer:
     def __init__(self, size: int) -> None:
         self.buffer = deque(maxlen=size)
 
@@ -31,30 +32,31 @@ class Replay_buffer:
         """
         return random.sample(self.buffer, size)
     
+@dataclass(slots=True)
+class TrainingConfig:
+    opponent_type: str = "random"
+    first_player: int = 1
+    reward_values: Reward_values = Reward_values(0, -10, 100, -100, 1)
+    buffer_size: int = 200_000
+    batch_size: int = 32
+    gamma: float = 0.95
 
-class Training_agent:
-    def __init__(self, player_agent: Player_agent_DQN, 
-                 size: int, 
-                 connect: int, 
-                 opponent_type: str = "random",
-                 first_player: int = 1,
-                 reward_values: Reward_values = Reward_values(0, -10, 100, -100, 1),
-                 buffer_size: int = 200_000, 
-                 batch_size: int = 32, 
-                 gamma: float = 0.95) -> None:
+
+class TrainingAgent:
+    def __init__(self, player_agent: PlayerAgentDQN, cfg: TrainingConfig) -> None:
                 
-        # Assign values
-        self.agent: Player_agent_DQN = player_agent
-        self.reward_values: Reward_values = reward_values
-        self.batch_size: int = batch_size
-        self.gamma: float = gamma
-        self.replay_buffer_X: Replay_buffer = Replay_buffer(buffer_size)
-        self.replay_buffer_O: Replay_buffer = Replay_buffer(buffer_size)
-        self.game: Game = Game(size, connect, first_player)
-        self.opponent: Opponent = self._create_opponent(opponent_type)
+        self.agent: PlayerAgentDQN = player_agent
+        self.reward_values: Reward_values = cfg.reward_values
+        self.batch_size: int = cfg.batch_size
+        self.gamma: float = cfg.gamma
+        self.replay_buffer_X: ReplayBuffer = ReplayBuffer(cfg.buffer_size)
+        self.replay_buffer_O: ReplayBuffer = ReplayBuffer(cfg.buffer_size)
+        self.game: Game = Game(player_agent.board_size, player_agent.connect, cfg.first_player)
+        self.opponent: Opponent = self._create_opponent(cfg.opponent_type)
         self.losses: list = []
 
-    def run_training_loop(self, interaction_steps: int = 10, 
+    def run_training_loop(self, 
+                          interaction_steps: int = 10, 
                           loops: int = 50_000, 
                           switch_sides: bool = True, 
                           side_switch_period: int = 5_000, 
@@ -372,9 +374,9 @@ if __name__ == "__main__":
 
 
 
-    agent = Player_agent_DQN(board_size=5, connect=4, player_side=1,channels=[3,4,8,1], kernel_sizes=[4,4,4])
+    agent = PlayerAgentDQN(board_size=5, connect=4, player_side=1,channels=[3,4,8,1], kernel_sizes=[4,4,4])
     # agent.value_network.load_state_dict(t.load("backend/models/value_network_3x3_3layer.pth"))
-    ta = Training_agent(player_agent=agent, size=5, connect=4, opponent_type="random_central", buffer_size=50_000)
+    ta = TrainingAgent(player_agent=agent, size=5, connect=4, opponent_type="random_central", buffer_size=50_000)
     result = ta.evaluate()
     print(result)
     ta.run_training_loop(interaction_steps=10, loops=10_000, switch_sides=True, side_switch_period=3_000)
