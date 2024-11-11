@@ -40,6 +40,7 @@ class TrainingConfig:
     buffer_size: int = 200_000
     batch_size: int = 32
     gamma: float = 0.95
+    lr = 0.003
 
 
 class TrainingAgent:
@@ -54,6 +55,7 @@ class TrainingAgent:
         self.game: Game = Game(player_agent.board_size, player_agent.connect, cfg.first_player)
         self.opponent: Opponent = self._create_opponent(cfg.opponent_type)
         self.losses: list = []
+        self.optimizer = t.optim.Adam(params=self.agent.value_network.parameters(), lr=cfg.lr)
 
     def run_training_loop(self, 
                           interaction_steps: int = 10, 
@@ -133,11 +135,11 @@ class TrainingAgent:
         # Get MSE loss between evaluation of actions taken and 
         loss = t.nn.functional.mse_loss(chosen_action_Q_values, target_values)
 
-        self.agent.optimizer.zero_grad()
+        self.optimizer.zero_grad()
 
         loss.backward()
 
-        self.agent.optimizer.step()
+        self.optimizer.step()
 
         return loss.item()
 

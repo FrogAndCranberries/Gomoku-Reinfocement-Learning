@@ -16,7 +16,6 @@ class AgentConfig:
     player_side: int = 1
     epsilon: float = 0.2
     epsilon_multiplier_per_nn_sync: float = 0.99
-    lr: float = 0.003
 
 class PlayerAgentDQN:
     def __init__(self, cfg: AgentConfig) -> None:
@@ -36,7 +35,6 @@ class PlayerAgentDQN:
         self.sync_networks()
 
         self.rng = np.random.default_rng()
-        self.optimizer = t.optim.Adam(params=self.value_network.parameters(), lr=cfg.lr)
 
     
     def sync_networks(self) -> None:
