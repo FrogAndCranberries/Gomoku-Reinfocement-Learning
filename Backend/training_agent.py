@@ -47,8 +47,8 @@ class Training_agent:
         self.reward_values: Reward_values = reward_values
         self.batch_size: int = batch_size
         self.gamma: float = gamma
-        self.buffer_X: Replay_buffer = Replay_buffer(buffer_size)
-        self.buffer_O: Replay_buffer = Replay_buffer(buffer_size)
+        self.replay_buffer_X: Replay_buffer = Replay_buffer(buffer_size)
+        self.replay_buffer_O: Replay_buffer = Replay_buffer(buffer_size)
         self.game: Game = Game(size, connect, first_player)
         self.opponent: Opponent = self._create_opponent(opponent_type)
         self.losses: list = []
@@ -234,14 +234,14 @@ class Training_agent:
         return episode_reward
 
 
-    def _add_experience_to_buffers(self):
+    def _add_experience_to_buffers(self) -> None:
         self._play_game_as_first_player(self.batch_size * 100)
         self.agent.side *= -1
         self._play_game_as_first_player(self.batch_size * 100)
         self.agent.side *= -1
     
 
-    def _print_endstate(self):
+    def _print_endstate(self) -> None:
 
         match self.game.obs.endstate:
 
@@ -266,11 +266,11 @@ class Training_agent:
     def _push_to_buffer(self, state: np.ndarray, action: int, reward: float, next_state: np.ndarray, terminated: bool) -> None:
 
         if agent.side == 1:
-            self.buffer_X.push(Transition(state, action, reward, next_state, terminated))
+            self.replay_buffer_X.push(Transition(state, action, reward, next_state, terminated))
         else:
             state = state[(1,0,2),...]
             next_state = next_state[(1,0,2),...]
-            self.buffer_O.push(Transition(state, action, reward, next_state, terminated))
+            self.replay_buffer_O.push(Transition(state, action, reward, next_state, terminated))
 
     def _calculate_target_values(self, rewards: Tensor, next_states: Tensor, terminated: Tensor) -> Tensor:
         next_state_values = self.agent.target_network(next_states)
@@ -279,12 +279,12 @@ class Training_agent:
         target_values = rewards + self.gamma * max_next_values
         return target_values
 
-    def _sample_batch_from_buffer(self) -> tuple:
+    def _sample_batch_from_buffer(self) -> tuple[Tensor, ...]:
 
         if self.agent.side == 1:
-            batch = self.buffer_X.sample(self.batch_size)
+            batch = self.replay_buffer_X.sample(self.batch_size)
         else:
-            batch = self.buffer_O.sample(self.batch_size)
+            batch = self.replay_buffer_O.sample(self.batch_size)
 
         states      = t.tensor(np.array([transition.state for transition in batch]), dtype=t.float32)
         actions     = t.tensor(np.array([transition.action for transition in batch]), dtype=t.int32)
@@ -298,7 +298,7 @@ class Training_agent:
             opponent_move = self.opponent.get_move()
             self.game.make_move(opponent_move)
 
-    def _determine_reward(self, valid_move=True):
+    def _determine_reward(self, valid_move=True) -> float:
 
         if not valid_move:
             return self.reward_values.invalid
@@ -323,7 +323,7 @@ class Training_agent:
             case Endstate.DRAW:
                 return self.reward_values.draw
             
-    def _create_opponent(self, opponent_type):
+    def _create_opponent(self, opponent_type) -> Opponent:
         
         opponent_types = {
             "random": RandomOpponent,
@@ -376,8 +376,8 @@ if __name__ == "__main__":
     ta = Training_agent(player_agent=agent, size=5, connect=4, opponent_type="random_central", buffer_size=50_000)
     result = ta.evaluate()
     print(result)
-    ta.run_training_loop(interaction_steps=10, loops=20_000, switch_sides=True, side_switch_period=3_000)
+    ta.run_training_loop(interaction_steps=10, loops=10_000, switch_sides=True, side_switch_period=3_000)
     ta.plot_losses()
     print(ta.evaluate())
-    # t.save(ta.agent.value_network.state_dict(), "value_network_3x3_3layer.pth")
+    t.save(ta.agent.value_network.state_dict(), "value_network_4x4_3layer.pth")
     # ta.visualise(turn_limit=25, delay = 1)
