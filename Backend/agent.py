@@ -3,7 +3,7 @@ import numpy as np
 import torch as t
 from torch import Tensor
 from networks import Q_net
-from game import Observation
+from game import Observation, Side
 from typing import Sequence
 import einops
 
@@ -13,15 +13,12 @@ class AgentConfig:
     connect: int
     channels: Sequence[int]
     kernel_sizes: Sequence[int]
-    player_side: int = 1
+    player_side: Side = Side.X
     epsilon: float = 0.2
     epsilon_multiplier_per_nn_sync: float = 0.99
 
 class PlayerAgentDQN:
     def __init__(self, cfg: AgentConfig) -> None:
-    
-        if cfg.player_side != -1 and cfg.player_side != 1:
-            raise ValueError(f"Side must be 1 or -1, not {cfg.player_side}.")
         
         self.side = cfg.player_side
         self.board_size = cfg.board_size
@@ -72,19 +69,13 @@ class PlayerAgentDQN:
         else:
             action = self.greedy_policy(observation)
             return action
-
-    def get_player_side_as_char(self) -> str:
-        if self.side == 1:
-            return "X"
-        else:
-            return "O"
         
     def decay_epsilon(self) -> None:
         self.epsilon *= self.epsilon_multiplier_per_nn_sync
         
     def _observation_to_nn_input(self, observation: Observation) -> Tensor:
         
-        if self.side == 1:
+        if self.side == Side.X:
             input = observation.board
         else:
             input = observation.board[(1,0,2),...]
