@@ -3,7 +3,7 @@ from enum import Enum
 from scipy.signal import convolve2d
 from collections import namedtuple
 from sys import stdout
-from opponent import Opponent
+from opponent import *
 
 class MoveResult(Enum):
     STANDARD = 0
@@ -27,7 +27,7 @@ class Game:
     A connenct-N game instance.
     """
 
-    def __init__(self, board_size: int, connect: int, first_player: Side, opponent: Opponent) -> None:
+    def __init__(self, board_size: int, connect: int, first_player: Side, opponent_type: str) -> None:
         """
         Creates a game instance of connect-N on board with side length board_size
         """
@@ -45,7 +45,7 @@ class Game:
         self.last_move_result: MoveResult = MoveResult.STANDARD
         self.win_check_kernels: dict = self._initialise_kernels()
         self.valid_moves: list = list(range(board_size ** 2))
-        self.opponent = opponent
+        self.opponent = self._create_opponent(opponent_type)
 
     def reset(self) -> None:
         """
@@ -73,7 +73,7 @@ class Game:
             self.opponent_move()
 
     def opponent_move(self) -> None:
-        opponent_move = self.opponent.get_move(self)
+        opponent_move = self.opponent.get_move(self.valid_moves)
         self._record_move(opponent_move)
 
 
@@ -169,6 +169,21 @@ class Game:
         kernels["antidiagonal"] = np.fliplr(np.eye(self.connect, dtype=np.int8))
 
         return kernels
+    
+    def _create_opponent(self, opponent_type) -> Opponent:
+        
+        opponent_types = {
+            "random": RandomOpponent,
+            "central": CentralOpponent,
+            "random_central": RandomCentralOpponent
+        }
+
+        opponent = opponent_types.get(opponent_type)
+
+        if opponent is None:
+            raise KeyError(f"Opponent type {opponent_type} not implemented.")
+        else:
+            return opponent()
     
 class GameUtils:
 

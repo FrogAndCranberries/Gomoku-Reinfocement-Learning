@@ -1,5 +1,5 @@
 from game import *
-from agent import PlayerAgentDQN
+from agent import PlayerAgentDQN, AgentConfig
 from collections import namedtuple
 from collections import deque
 import matplotlib.pyplot as plt
@@ -52,8 +52,11 @@ class TrainingAgent:
         self.gamma: float = cfg.gamma
         self.replay_buffer_X: ReplayBuffer = ReplayBuffer(cfg.buffer_size)
         self.replay_buffer_O: ReplayBuffer = ReplayBuffer(cfg.buffer_size)
-        self.game: Game = Game(player_agent.board_size, player_agent.connect, cfg.first_player)
-        self.opponent: Opponent = self._create_opponent(cfg.opponent_type)
+        self.game: Game = Game(
+            board_size=player_agent.board_size, 
+            connect=player_agent.connect, 
+            first_player=cfg.first_player, 
+            opponent_type=cfg.opponent_type)
         self.losses: list = []
         self.optimizer = t.optim.Adam(params=self.agent.value_network.parameters(), lr=cfg.lr)
 
@@ -74,10 +77,7 @@ class TrainingAgent:
 
             loss = self._update_value_network_weights()
             self.losses.append(loss)
-            if self.agent.side == self.game.first_player:
-                self._play_game_as_first_player(interaction_steps)
-            else:
-                self._play_game_as_second_player(interaction_steps)
+            self._play_game(interaction_steps)
 
             if i % sync_period == 0:
                 self.agent.sync_networks()
@@ -169,34 +169,26 @@ class TrainingAgent:
         episode_reward = 0
         game = self.game
         game.reset()
-
-        if self.agent.side != game.next_player:
-            self._make_opponent_move()
+        if game.first_player != self.agent.side:
+            game.opponent_move()
 
         for _ in range(turn_limit):
+
+            initial_obs = game.obs
+            move = self.agent.epsilon_greedy_policy(initial_obs)
+            game.take_turns(move)
+            episode_reward += self._determine_reward()
+
             if game.obs.terminated:
                 break
-
-            agent_move = self.agent.epsilon_greedy_policy(game.obs)
-
-            if not self.game.is_move_valid(agent_move):
-                episode_reward += self._determine_reward(valid_move=False)
-                continue
-            
-            else:
-                self.game.take_turns(agent_move)
-                if not game.obs.terminated:
-                    self._make_opponent_move()
-                
-                episode_reward += self._determine_reward(valid_move=True)
         
         return episode_reward
 
 
     def _add_experience_to_buffers(self) -> None:
-        self._play_game_as_first_player(self.batch_size * 100)
+        self._play_game(self.batch_size * 100)
         self.agent.side = self.agent.side.switch
-        self._play_game_as_first_player(self.batch_size * 100)
+        self._play_game(self.batch_size * 100)
         self.agent.side = self.agent.side.switch
     
 
@@ -256,9 +248,6 @@ class TrainingAgent:
 
         return states,actions,rewards,next_states,terminated
 
-    def _make_opponent_move(self) -> None:
-            opponent_move = self.opponent.get_move()
-            self.game.take_turns(opponent_move)
 
     def _determine_reward(self) -> float:
 
@@ -285,22 +274,6 @@ class TrainingAgent:
             case MoveResult.DRAW:
                 return self.reward_values.draw
             
-    def _create_opponent(self, opponent_type) -> Opponent:
-        
-        opponent_types = {
-            "random": RandomOpponent,
-            "central": CentralOpponent,
-            "random_central": RandomCentralOpponent
-        }
-
-        opponent = opponent_types.get(opponent_type)
-
-        if opponent is None:
-            raise KeyError(f"Opponent type {opponent_type} not implemented.")
-        else:
-            return opponent(game=self.game)
-
-
 
 if __name__ == "__main__":
 
@@ -331,11 +304,18 @@ if __name__ == "__main__":
 
 
 
+    agentCfg = AgentConfig(
+        board_size=5, connect=4, player_side=Side.X, channels=[3,4,8,1], kernel_sizes=[4,4,4]
+    )
 
+    trainingCfg = TrainingConfig(
+        opponent_type="random",
+        first_player=Side.X
+    )
 
-    agent = PlayerAgentDQN(board_size=5, connect=4, player_side=1,channels=[3,4,8,1], kernel_sizes=[4,4,4])
+    agent = PlayerAgentDQN(agentCfg)
     # agent.value_network.load_state_dict(t.load("backend/models/value_network_3x3_3layer.pth"))
-    ta = TrainingAgent(player_agent=agent, size=5, connect=4, opponent_type="random_central", buffer_size=50_000)
+    ta = TrainingAgent(player_agent=agent, cfg = trainingCfg)
     result = ta.evaluate()
     print(result)
     ta.run_training_loop(interaction_steps=10, loops=10_000, switch_sides=True, side_switch_period=3_000)
