@@ -60,7 +60,7 @@ class Game:
 
     def take_turns(self, agent_move: int) -> None:
         """
-        Next player plays at the passed flat index and the game result is evaluated.
+        Agent plays at the passed flat index followed by the opponent and the game result is evaluated.
         """
 
         if not self.is_move_valid(agent_move):
@@ -72,9 +72,16 @@ class Game:
         if self.last_move_result == MoveResult.STANDARD:
             self.opponent_move()
 
+
+
     def opponent_move(self) -> None:
+        
+        self._advance_turn()
+
         opponent_move = self.opponent.get_move(self.valid_moves)
         self._record_move(opponent_move)
+        
+        self._advance_turn()
 
 
     def _record_move(self, index: int) -> None:
@@ -82,14 +89,16 @@ class Game:
         self.board[i,j] = self.next_player.value
         self.valid_moves.remove(index)
         self._evaluate()
-        self._advance_turn()
 
     @property
     def obs(self) -> Observation:
         """
         Returns an observation of the current game state.
         """
-        board_3_channel = np.stack((self.board == 1, self.board == -1, self.board == 0))
+        if self.next_player == Side.X:
+            board_3_channel = np.stack((self.board == 1, self.board == -1, self.board == 0))
+        else:
+            board_3_channel = np.stack((self.board == -1, self.board == 1, self.board == 0))
         board_3_channel = board_3_channel.astype(np.int8)
         
         return Observation(board_3_channel, self.terminated, self.last_move_result)

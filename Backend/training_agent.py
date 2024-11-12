@@ -50,8 +50,7 @@ class TrainingAgent:
         self.reward_values: Reward_values = cfg.reward_values
         self.batch_size: int = cfg.batch_size
         self.gamma: float = cfg.gamma
-        self.replay_buffer_X: ReplayBuffer = ReplayBuffer(cfg.buffer_size)
-        self.replay_buffer_O: ReplayBuffer = ReplayBuffer(cfg.buffer_size)
+        self.replay_buffer: ReplayBuffer = ReplayBuffer(cfg.buffer_size)
         self.game: Game = Game(
             board_size=player_agent.board_size, 
             connect=player_agent.connect, 
@@ -84,7 +83,7 @@ class TrainingAgent:
                 self.agent.decay_epsilon()
             
             if switch_sides and i % side_switch_period == 0:
-                self.agent.side = self.agent.side.switch
+                self.game.first_player = game.first_player.switch
 
         return self.losses
 
@@ -156,7 +155,7 @@ class TrainingAgent:
             game.take_turns(move)
             reward = self._determine_reward()
 
-            self._push_to_buffer(initial_obs.board, move, reward, game.obs.board, game.obs.terminated)
+            self.replay_buffer.push(Transition(initial_obs.board, move, reward, game.obs.board, game.obs.terminated))
 
             if game.obs.terminated:
                 game.reset()
@@ -217,15 +216,6 @@ class TrainingAgent:
             case MoveResult.DRAW:
                 print(f"Game drawn on turn {self.game.turn}.")
 
-    def _push_to_buffer(self, state: np.ndarray, action: int, reward: float, next_state: np.ndarray, terminated: bool) -> None:
-
-        if agent.side == Side.X:
-            self.replay_buffer_X.push(Transition(state, action, reward, next_state, terminated))
-        else:
-            state = state[(1,0,2),...]
-            next_state = next_state[(1,0,2),...]
-            self.replay_buffer_O.push(Transition(state, action, reward, next_state, terminated))
-
     def _calculate_target_values(self, rewards: Tensor, next_states: Tensor, terminated: Tensor) -> Tensor:
         next_state_values = self.agent.target_network(next_states)
         max_next_values =  einops.reduce(next_state_values, "b c i j -> b", "max")
@@ -235,10 +225,7 @@ class TrainingAgent:
 
     def _sample_batch_from_buffer(self) -> tuple[Tensor, ...]:
 
-        if self.agent.side == Side.X:
-            batch = self.replay_buffer_X.sample(self.batch_size)
-        else:
-            batch = self.replay_buffer_O.sample(self.batch_size)
+        batch = self.replay_buffer.sample(self.batch_size)
 
         states      = t.tensor(np.array([transition.state for transition in batch]), dtype=t.float32)
         actions     = t.tensor(np.array([transition.action for transition in batch]), dtype=t.int32)
